@@ -1,7 +1,6 @@
-Arrow = require("./Arrow.js");
-Line = require("./Line.js");
-const { loadGlMatrix} = require("./glMatrix.js");
-const Interpolator = require("./Interpolator.js");
+const { Arrow, ArrowHead, Line } = require("../Geometry/Index.js");
+const { loadGlMatrix} = require("../lib/glMatrix.js");
+const Interpolator = require("../Animation Framework/Interpolator.js");
 const { vec2, mat2d} = loadGlMatrix();
 
 class Grapher{

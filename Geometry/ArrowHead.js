@@ -1,8 +1,4 @@
-const Interpolator = require("./Interpolator.js");
-const Transition = require("./Transition.js");
-const AnimationManager = require("./PlayableManager.js");
-const Playable = require("./Playable.js");
-const Animation = require("./Animation.js");
+const {Interpolator, Transition, PlayableManager, Playable, Animation} = require("../Animation Framework/Index.js");
 
 class ArrowHead{
 	#playableManager;
@@ -22,7 +18,7 @@ class ArrowHead{
 		interpolator = Interpolator.func.SMOOTHSTEP,
 		interpolatorParams = {}
 	} = {}){
-		this.#playableManager = new AnimationManager();
+		this.#playableManager = new PlayableManager();
 		if (arrow === undefined){
             this._origin = {x : arrowOrigin.x, y : arrowOrigin.y};
             this.theta = headDirection;

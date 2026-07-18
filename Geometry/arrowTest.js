@@ -4,13 +4,13 @@ function freshRequire(path) {
     return require(path);
 }
 /**@type {typeof import("./ArrowHead.js")}*/
-const ArrowHead = freshRequire(basePath + "/Scripts/ArrowHead.js");
+const ArrowHead = freshRequire("./ArrowHead.js");
 //const AnimationManager = require("./AnimationManager.js");
 //const Animation = require("./Animation.js");
 /**@type {typeof import("./Transition.js")} */
-const Transition = freshRequire(basePath + "/Scripts/Transition.js");
+const Transition = freshRequire("../Animation Framework/Transition.js");
 /**@type {typeof import("./Interpolator.js")}  */
-const Interpolator = freshRequire(basePath + "/Scripts/Interpolator.js");
+const Interpolator = freshRequire("../Animation Framework/Interpolator.js");
 const svgNS = "http://www.w3.org/2000/svg";
 
 const wrapper = document.createElement("div");
