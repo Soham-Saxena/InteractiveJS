@@ -83,7 +83,7 @@ const arrow = new Arrow({
 svgPathElement.setAttribute("d", arrow.pathScript);
 ```
 
-> **Note:** `arrowTest.js` is written to run inside [Obsidian](https://obsidian.md) (it references `app.vault.adapter` and Obsidian's CSS variables). It's kept here as a working example but isn't required by the library — consider moving Obsidian-specific demos into a top-level `examples/` folder as the project grows.
+> **Note:** `arrowTest.js` is written to run inside [Obsidian](https://obsidian.md) (it references `app.vault.adapter` and Obsidian's CSS variables). It's kept here as a working example but isn't required by the library.
 
 ## Roadmap
 
