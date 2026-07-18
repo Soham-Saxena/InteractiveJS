@@ -11,9 +11,8 @@ class ArrowHead{
 
 	constructor({
 		arrowOrigin = {x : 0, y : 0},
-		headDirection= 0,  
-		finAngle=(35) * (Math.PI/180.00),
-		radian = true,
+		headDirection= 0,  hRadian = true,
+		finAngle= (35) * (Math.PI/180.00), fRadian = true,
 		arrowSize=10, precision=2, 
 		arrow=undefined, 
 		interpolator = Interpolator.func.SMOOTHSTEP,
@@ -22,8 +21,8 @@ class ArrowHead{
 		this.#playableManager = new PlayableManager();
 		if (arrow === undefined){
             this._origin = {x : arrowOrigin.x, y : arrowOrigin.y};
-            this.theta = radian ? headDirection : (Math.PI/180) * headDirection;
-            this.alpha = radian ? headDirection : (Math.PI/180) * finAngle;
+            this.theta = hRadian ? headDirection : (Math.PI/180) * headDirection;
+            this.alpha = fRadian ? headDirection : (Math.PI/180) * finAngle;
             this.distance = arrowSize;
             this.precision = precision;
         }
