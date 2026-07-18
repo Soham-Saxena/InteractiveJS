@@ -46,17 +46,14 @@ Holds a named collection of `Playable`s (e.g. multiple `Animation`s) and drives 
 
 ## Usage Example
 
-You can require individual files, or pull everything in at once via the barrel `Index.js`:
+You can require individual files, or pull everything in at once via the barrel `index.js`:
 
 ```js
-const { Animation, Transition, Interpolator, PlayableManager } = require("./Index.js");
+const { Animation, Transition, Interpolator, PlayableManager } = require("./index.js");
 ```
 
 ```js
-const Animation = require("./Animation.js");
-const Transition = require("./Transition.js");
-const Interpolator = require("./Interpolator.js");
-const PlayableManager = require("./PlayableManager.js");
+const {Animation, Transition, Interpolator, PlayableManager} = require("../InteractiveJS/Animation Framework/index.js");
 
 // Animate an object's x position from 0 to 100 over 500ms with an ease-out-back curve
 const moveX = new Animation({
