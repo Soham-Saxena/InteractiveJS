@@ -59,7 +59,7 @@ const ArrowHead = require("./ArrowHead.js");
 
 const arrowhead = new ArrowHead({
   arrowOrigin : { x : 0, y : 0 },
-  headDirection : 30, // degree
+  headDirection : 30, hRadian = false// degree
   arrowSize : 10
 });
 
