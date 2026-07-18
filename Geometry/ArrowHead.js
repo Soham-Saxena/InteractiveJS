@@ -1,4 +1,4 @@
-const {Interpolator, Transition, PlayableManager, Playable, Animation} = require("../Animation Framework/Index.js");
+const {Interpolator, Transition, PlayableManager, Playable, Animation} = require("../Animation Framework/index.js");
 
 class ArrowHead{
 	#playableManager;
@@ -11,7 +11,7 @@ class ArrowHead{
 
 	constructor({
 		arrowOrigin = {x : 0, y : 0},
-		headDirection=0, 
+		headDirection= 0, 
 		finAngle=(35) * (Math.PI/180.00), 
 		arrowSize=10, precision=2, 
 		arrow=undefined, 
@@ -21,7 +21,7 @@ class ArrowHead{
 		this.#playableManager = new PlayableManager();
 		if (arrow === undefined){
             this._origin = {x : arrowOrigin.x, y : arrowOrigin.y};
-            this.theta = headDirection;
+            this.theta = (Math.PI/180) * headDirection;
             this.alpha = finAngle;
             this.distance = arrowSize;
             this.precision = precision;
