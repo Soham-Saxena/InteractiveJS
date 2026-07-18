@@ -11,18 +11,19 @@ class ArrowHead{
 
 	constructor({
 		arrowOrigin = {x : 0, y : 0},
-		headDirection= 0, 
-		finAngle=(35) * (Math.PI/180.00), 
+		headDirection= 0,  
+		finAngle=(35) * (Math.PI/180.00),
+		radian = true,
 		arrowSize=10, precision=2, 
 		arrow=undefined, 
 		interpolator = Interpolator.func.SMOOTHSTEP,
-		interpolatorParams = {}
+		interpolatorParams = {},
 	} = {}){
 		this.#playableManager = new PlayableManager();
 		if (arrow === undefined){
             this._origin = {x : arrowOrigin.x, y : arrowOrigin.y};
-            this.theta = (Math.PI/180) * headDirection;
-            this.alpha = finAngle;
+            this.theta = radian ? headDirection : (Math.PI/180) * headDirection;
+            this.alpha = radian ? headDirection : (Math.PI/180) * finAngle;
             this.distance = arrowSize;
             this.precision = precision;
         }
