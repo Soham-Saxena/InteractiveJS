@@ -320,7 +320,7 @@ class Animation extends Playable{
             transition : startFrame.transition,
             onUpdate : onUpdate,
             onFinish : onFinish
-        })
+        });
     }
 }
 
