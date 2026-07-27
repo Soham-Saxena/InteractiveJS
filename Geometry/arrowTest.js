@@ -1,16 +1,23 @@
 const basePath = app.vault.adapter.getBasePath();
-function freshRequire(path) {
-    delete require.cache[require.resolve(path)];
-    return require(path);
+const nodePath = require("path");
+
+function freshRequire(file) {
+    delete require.cache[require.resolve(file)];
+    return require(file);
 }
-/**@type {typeof import("./ArrowHead.js")}*/
-const ArrowHead = freshRequire("./ArrowHead.js");
-//const AnimationManager = require("./AnimationManager.js");
-//const Animation = require("./Animation.js");
-/**@type {typeof import("./Transition.js")} */
-const Transition = freshRequire("../Animation Framework/Transition.js");
-/**@type {typeof import("./Interpolator.js")}  */
-const Interpolator = freshRequire("../Animation Framework/Interpolator.js");
+
+const ArrowHead = freshRequire(
+    nodePath.join(basePath, "Scripts", "InteractiveJS", "Geometry", "ArrowHead.js")
+);
+
+const Transition = freshRequire(
+    nodePath.join(basePath, "Scripts", "InteractiveJS", "Animation Framework", "Transition.js")
+);
+
+
+const Interpolator = freshRequire(
+    nodePath.join(basePath, "Scripts", "InteractiveJS", "Animation Framework", "Interpolator.js")
+);
 const svgNS = "http://www.w3.org/2000/svg";
 
 const wrapper = document.createElement("div");
@@ -39,19 +46,18 @@ arrow.transform({
 });
 arrow.transform({
     name : "origin",
-    duration : 2500,
-    interpType : Interpolator.func.EASE_IN_OUT
+    duration : 5000,
+    interpType : Interpolator.func.EASE_IN
 });
 arrow.transform({
     name : "size",
     duration : 1000
 });
 console.log(arrow.attrAnimation("origin").transition.configuration);
-arrow.arrowSize = 50;
-arrow.direction = {angle : 360};
+//arrow.arrowSize = 50;
+//arrow.direction = {angle : 360};
 arrow.finInclination = {angle : Math.PI / 4, radian : true};
-arrow.origin = { x : 0, y : 0};
-setTimeout(() => {arrow.origin = { x : 400, y : 300};}, 2500);
+arrow.origin = { x : 210, y : 309};
 
 const update = (timestamp) => {
     path.setAttribute("d", arrow.pathScript);

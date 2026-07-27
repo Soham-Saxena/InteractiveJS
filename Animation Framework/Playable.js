@@ -4,7 +4,7 @@ class Playable{
         PAUSED : 1,
         FINISHED : 2
     });
-    _playableState = undefined;
+    _playableState = Playable.state.FINISHED;
 
     constructor(){
         if (new.target === Playable)

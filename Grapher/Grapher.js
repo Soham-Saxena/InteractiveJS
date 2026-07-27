@@ -1,4 +1,4 @@
-const { Arrow, ArrowHead, Line } = require("../Geometry/Index.js");
+const { Arrow, ArrowHead, Line } = require("../Geometry/index.js");
 const { loadGlMatrix} = require("../lib/glMatrix.js");
 const Interpolator = require("../Animation Framework/Interpolator.js");
 const { vec2, mat2d} = loadGlMatrix();
