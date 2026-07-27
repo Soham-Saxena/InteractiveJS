@@ -1,4 +1,20 @@
+/**
+ * Maps a normalized input value in `[0, 1]` to another normalized value in
+ * `[0, 1]` using an easing function.
+ *
+ * An Interpolator represents the progression of an animation over time and is
+ * typically used by {@link Transition} to determine interpolation speed.
+ *
+ * Built-in easing functions are available through {@link Interpolator.func},
+ * but custom interpolation functions may also be supplied.
+ */
 class Interpolator{
+    /**
+     * Built-in Interpolator function identifiers.
+     * 
+     * @readonly
+     * @enum {string}
+     */
     static func = Object.freeze({
         LINEAR : "linear",
         SMOOTHSTEP : "smoothstep",
@@ -18,9 +34,22 @@ class Interpolator{
         EASE_OUT_ELASTIC : "easeOutElastic",
         EASE_OUT_BOUNCE : "easeOutBounce"
     });
+    /**
+     * Clamps provided value between the range `[0, 1]`
+     * 
+     * @param {number} x Value to clamp.
+     * @returns {number} Clamped value.
+     */
     static clamp = (x) => {
         return Math.min(Math.max(x, 0), 1);
     }
+    /**
+     * Factory functions used to create interpolation functions. Works using on identifiers present in {@link Interpolator.func}
+     * 
+     * Each generator accepts a parameter object and returns a function of the form: `(x) => number`, where `x` is expected to lie between `[0, 1]`.
+     * 
+     * @type {Object<string, function(Object) : function(number): number>}
+     */
     static funcGenerator = {
         [Interpolator.func.LINEAR] : (params = {}) => {
             return (x) => {
@@ -131,6 +160,14 @@ class Interpolator{
     #interpFunc = null;
     #funcName = "unknown";
 
+    /**
+     * Creates an Interpolator.
+     * 
+     * @param {Object} [options] Options to configure the created Interpolator.
+     * @param {string} [options.type = Interpolator.func.SMOOTHSTEP] Built-in interpolation type.
+     * @param {Object} [options.params = {}] Parameters passed to the interpolator generator.
+     * @param {Interpolator} [interpolator] Existing Interpolator to copy. If provided, all other parameters are ignored. 
+     */
     constructor({
         type = Interpolator.func.SMOOTHSTEP, 
         params = {}, 
@@ -154,14 +191,38 @@ class Interpolator{
         }
     }
     //getter
+    /**
+     * Returns the interpolator function of the form: `(x : number) => number`
+     * 
+     * @returns {function(number) : number} The interpolation function.
+     */
     get interpolationFunction(){
         return this.#interpFunc;
     }
+    /**
+     * Returns the name of the interpolator type used.
+     * 
+     * @returns {string} The name of the function.
+     */
     get funcName(){
         return this.#funcName;
     }
     
     //setters
+    /**
+     * Configures the interpolator based on provided options.
+     * 
+     * **Note:** Can be configured with a custom function as well, ensure the function is of the type: `(x : number) => number`.
+     * Output will be clamped automatically between `[0, 1]`.
+     * **Warning:** Custom function should map `0 -> 0` and `1 -> 1`
+     *
+     * 
+     * @param {Object} options Options to configure the interpolator.
+     * @param {string} [options.functionType] Built-in function type from {@link Interpolator.func}.
+     * @param {Object} [params] Parameteres passed to the interpolator generator.
+     * @param {function(number) : number} [customFunction] Custom function for the interpolator to use. If provided, ignores all other parameters except `funcName`.
+     * @param {string} [funcName] Name provided for the customFunction, function will be named undefined if not provided. 
+     */
     set interpolationFunction({functionType = undefined, params = {}, customFunction = undefined, funcName = "unknown"} = {}){
         if (functionType !== undefined){
             const generator = Interpolator.funcGenerator[functionType];
@@ -187,6 +248,12 @@ class Interpolator{
     }
 
     //class functions
+    /**
+     * Calculates interpolated value.
+     * 
+     * @param {number} x Input to Interpolator function.
+     * @returns {number} Interpolated value between `[0, 1]`.
+     */
     calculate(x){
         if (Interpolator.funcGenerator[this.#funcName] === undefined) 
             x = Interpolator.clamp(x); //mainly put as a safety measure for custom functions
