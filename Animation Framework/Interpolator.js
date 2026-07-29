@@ -161,8 +161,6 @@ class Interpolator{
     #funcName = "unknown";
 
     /**
-     * Creates an Interpolator.
-     * 
      * @param {Object} [options] Options to configure the created Interpolator.
      * @param {string} [options.type = Interpolator.func.SMOOTHSTEP] Built-in interpolation type.
      * @param {Object} [options.params = {}] Parameters passed to the interpolator generator.

@@ -17,8 +17,6 @@ class Transition{
     #enabled;
 
     /**
-     * Creates a transition.
-     * 
      * @param {Object} [options = {}] The options to configure the transition.
      * @param {number} [options.duration = 300] The duration of the transition, in **ms**.
      * @param {number} [options.delay = 0] The delay before the interpolation begins, in **ms**.

@@ -99,7 +99,8 @@ class Playable{
         return this._playableState;
     }
     /**
-     * **Warning:** Simply logs a warning if nothing is implemented by the subclass, as a safety feature.
+     * **Warning:** Simply logs a warning if nothing is implemented by the subclass,
+     * as a safety feature to ensure playbacks state is only mutated intentionally
      */
     set playableState(state){
         console.warn("This is a dummy function that doesnt do anything");

@@ -2,7 +2,7 @@
 const Transition = require("./Transition.js");
 const Playable = require("./Playable.js");
 /**
- * Animates from a starting state to an ending state, using provided {@link Transition}
+ * Animates from a starting state to an ending state, using provided {@link Transition}.
  * 
  * extends {@link Playable}
  */
