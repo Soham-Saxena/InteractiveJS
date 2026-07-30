@@ -71,7 +71,7 @@ class Transition{
      * @param {string} [options.interpType] The interpolator type provided by {@link Interpolator}.
      * @param {Object} [options.interpParams = {}] Parameters to feed to the {@link Interpolator} generator.
      * @param {Interpolator} [options.interpolator] Interpolator to be used for the transition.
-     * @param {function(*, *, number) : *} [options.mutator] Describes how to transform between two states based on time passed.
+     * @param {function(*, *, number) : *} [options.mutator] Describes how to transform between two states based on interpolation value.
      * - of the type `(startState, endState, t) => state`.
      * - `t` ranges between `[0, 1]`.
      * - returns `startState` when `t = 0`.
@@ -100,7 +100,7 @@ class Transition{
      * 
      * **Warning:** setters logs a warning if mutator is not a function and does nothing.
      *  
-     * @param {function(*, *, number) : *} mutatingFunction Describes how to transform between two states based on time passed.
+     * @param {function(*, *, number) : *} mutatingFunction Describes how to transform between two states based on interpolation value
      * - of the type `(startState, endState, t) => state`.
      * - `t` ranges between `[0, 1]`.
      * - returns `startState` when `t = 0`.
@@ -158,7 +158,7 @@ class Transition{
      * @property {string} interpolatorName Name of the interpolator function being used.
      * @property {Interpolator} interpolator The Interpolator being used by the transition.
      * @property {boolean} enabled Whether the Transition is enabled/disabled.
-     * @property {function(*, *, number) : *} mutator The function used to transform one start to another.
+     * @property {function(*, *, number) : *} mutator The function used to transform one state to another based on interpolation value.
      * - of the type `(startState, endState, t) => state`.
      * - `t` ranges between `[0, 1]`.
      * - returns `startState` when `t = 0`.
@@ -213,7 +213,7 @@ class Transition{
      */
     get enabled() { return this.#enabled; }
     /**
-     * Returns the mutating function used by the Transiton, to transform one state to another.
+     * Returns the mutating function used by the Transiton, to transform one state to another based on interpolation value.
      * - of the type `(startState, endState, t) => state`.
      * - `t` ranges between `[0, 1]`.
      * - returns `startState` when `t = 0`.
@@ -241,6 +241,18 @@ class Transition{
 
         const progress = this.#interpolator.calculate((t - this.#delay)/this.#duration);
         return this.#mutator(startState, endState, progress);
+    }
+    /**
+     * Copies all attributes of the provided Transition.
+     * 
+     * @param {Transition} transition 
+     */
+    copy(transition){
+        this.#delay = transition.#delay;
+        this.#duration = transition.#duration;
+        this.#enabled = transition.#enabled;
+        this.#interpolator.copy(transition.#interpolator);
+        this.#mutator = transition.#mutator;
     }
 }
 

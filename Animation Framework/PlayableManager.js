@@ -19,7 +19,7 @@ const Playable = require("./Playable.js");
  * and all previous playables with the same name will be lost.
  * 
  * **Warning:** All state changes (ie: pause, reset etc.) are expected to be done through the manager, not through
- * the individual stored playables. The manager may not notice if stored playables are manipulated directly
+ * the individual stored playables. The manager may not notice if stored playables are manipulated directly.
  * 
  * @extends Playable
  */

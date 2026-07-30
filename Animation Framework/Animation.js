@@ -22,15 +22,15 @@ class Animation extends Playable{
      * @param {Transition} [options.transition = new Transition()] The transition to use for animating
      * @param {*} [options.startState = undefined] Initial state of animation (at t = 0)
      * @param {*} [options.endState = undefined] Ending state of animation (at t = duration)
-     * @param {function(*): void} onUpdate Callback invoked whenever the animation state is updated. Receives the **current state**.
-     * @param {function(*): void} onFinish Callback invoked when the animation finishes. Receives the **end state**.
+     * @param {function(*): void} [options.onUpdate] Callback invoked whenever the animation state is updated. Receives the **current state**.
+     * @param {function(*): void} [options.onFinish] Callback invoked when the animation finishes. Receives the **end state**.
      */
     constructor({
         transition = new Transition(), 
         startState = undefined, 
         endState = undefined, 
-        onUpdate = (updatedState) => {return},
-        onFinish = (finishedState) => {return}
+        onUpdate = undefined,
+        onFinish = undefined
     } = {})
     {
         super();
@@ -39,8 +39,8 @@ class Animation extends Playable{
         this.#startState = startState;
         this.#endState = endState;
         this.#currentState = undefined;
-        this.#updateState = onUpdate;
-        this.#onFinish = onFinish;
+        if (typeof onUpdate === "function") this.#updateState = onUpdate;
+        if (typeof onFinish === "function") this.#onFinish = onFinish;
     }
     //private functions
     #cloneState(state){
@@ -182,6 +182,45 @@ class Animation extends Playable{
         this.#endState = this.#cloneState(endState);
         this.#currentState = undefined;
     }
+    /**
+     * Configures the Animation in accordance to given start and end frames.
+     * 
+     * **Warning:** Expects end frame to be chronologically after start frame. Delay should be within
+     * chronological range.
+     * 
+     * @param {Object} frames Object containing start and end frame.
+     * @param {KeyFrame} frames.startFrame Starting {@link KeyFrame} of the Animation.
+     * @param {KeyFrame} frames.endFrame Ending {@link KeyFrame} of the Animation.
+     */
+    set keyFrames({startFrame, endFrame} = {}){
+        let duration = (endFrame.time - startFrame.time);
+        if (typeof startFrame.transition === "string" || typeof endFrame.transition === "string")
+            throw new Error("Cannot create an animation from a hold keyframe.");
+        if (duration < 0)
+            throw new Error("Ending frame must be chronologically after Starting frame.");
+        duration -= startFrame.transition.delay;
+        if (duration < 0)
+            throw new Error("Delay exceeds the valid range.");
+        this.limits = {start : startFrame.state, end : endFrame.state};
+        this.#transition.copy(startFrame.transition);
+        this.transition.duration = duration;
+    }
+    /**
+     * Copies all attributes of the provided Animation.
+     * 
+     * @param {Animation} animation The Animation to copy.
+     */
+    copy(animation){
+        this.#currentState = animation.#currentState;
+        this.#elapsed = animation.#elapsed;
+        this.#startState = animation.#startState;
+        this.#endState = animation.#endState;
+        this.#reversed = animation.#reversed;
+        this.#onFinish = animation.#onFinish;
+        this.#updateState = animation.#updateState;
+        this.#transition.copy(animation.#transition);
+        this._playableState = animation._playableState;
+    }
 
     //class functions
     /**
@@ -231,7 +270,7 @@ class Animation extends Playable{
         this.#reversed = false;
     }
     /**
-     * Advances the animation by the specified time.
+     * Advances the animation by the specified time. Does nothing if TimeLine is paused/finished.
      * - If the animation is playing **forward**, the elapsed time is increased by `deltaT`.
      * - If the animation is **reversed**, the elapsed time is decreased by `deltaT`.
      * - Updates state by invoking provided `updateState(currentState)` function
@@ -255,6 +294,8 @@ class Animation extends Playable{
             if (this.#elapsed < 0) {
                 this.#elapsed = 0;
                 this._playableState = Playable.state.FINISHED;
+                this.#updateState(this.start);
+                this.#onFinish?.(this.start);
             }
             return;
         }
@@ -264,10 +305,11 @@ class Animation extends Playable{
             this.#currentState = this.#transition.transform(this.start, this.end, this.#elapsed - delay);
             if ((this.#reversed && this.#elapsed <= 0) || (!this.#reversed && this.#elapsed >= (this.#transition.duration + delay))){
                 this._playableState = Playable.state.FINISHED;
-                this.#onFinish(this.end);
+                this.#updateState(this.end);
+                this.#onFinish?.(this.end);
                 this.#elapsed = this.#reversed ? 0 : this.#transition.duration + delay;
             }
-            this.#updateState(this.currentState);
+            this.#updateState?.(this.currentState);
         }
     }
     /**
@@ -302,6 +344,9 @@ class Animation extends Playable{
     /** 
      * Creates an {@link Animation} from two {@link KeyFrame Keyframes}.
      * 
+     * **Warning:** `endFrame` is expected to be chronologically after `startFrame`.
+     * Will throw otherwise.
+     * 
      * @param {KeyFrame} startFrame Describes the frame at the beginning of the created animation (along with transition instructions)
      * @param {KeyFrame} endFrame Describes the frame at the end of the created animation
      * @param {function(*): void} onUpdate Callback invoked whenever the animation state is updated. Receives the **current state**.
@@ -314,10 +359,19 @@ class Animation extends Playable{
         onUpdate = () => {return},
         onFinish = () => {return},
     ){
+        /**@type {Transition}*/
+        const transition = startFrame.transition;
+        if (typeof transition === "string")
+            throw new Error("Cannot create an animation from a HOLD frame.");
+        const duration = (endFrame.time - startFrame.time) - transition.delay;
+        if (duration < 0){
+            throw new Error("Ending Frame should be chronologically after Starting Frame.");
+        }
+        transition.duration = duration;
         return new Animation({
             startState : startFrame.state,
             endState : endFrame.state,
-            transition : startFrame.transition,
+            transition : transition,
             onUpdate : onUpdate,
             onFinish : onFinish
         });

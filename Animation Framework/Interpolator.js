@@ -35,13 +35,22 @@ class Interpolator{
         EASE_OUT_BOUNCE : "easeOutBounce"
     });
     /**
-     * Clamps provided value between the range `[0, 1]`
+     * @typedef {Object} Range
+     * @property {number} lowerLimit - The lowest value of the Range.
+     * @property {number} upperLimit - The highest value of the Range.
+     */
+    /**
+     * Clamps provided value between the range.
+     * - `[0, 1]` by default, 
      * 
      * @param {number} x Value to clamp.
+     * @param {Range} [limits] The custom limits to clamp to.
      * @returns {number} Clamped value.
      */
-    static clamp = (x) => {
-        return Math.min(Math.max(x, 0), 1);
+    static clamp = (x, limits = undefined) => {
+        if (limits === undefined)
+            limits = {lowerLimit : 0, upperLimit : 1};
+        return Math.min(Math.max(x, limits.lowerLimit), limits.upperLimit);
     }
     /**
      * Factory functions used to create interpolation functions. Works using on identifiers present in {@link Interpolator.func}
@@ -257,7 +266,15 @@ class Interpolator{
             x = Interpolator.clamp(x); //mainly put as a safety measure for custom functions
         return this.#interpFunc(x);
     }
-
+    /**
+     * Copies all attributes of the provided interpolator. 
+     * 
+     * @param {Interpolator} interpolator The Interpolator to copy.
+     */
+    copy(interpolator){
+        this.#funcName = interpolator.funcName;
+        this.#interpFunc = interpolator.funcName;
+    }
 }
 
 module.exports = Interpolator;
