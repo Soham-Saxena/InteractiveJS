@@ -28,14 +28,18 @@ class PlayableManager extends Playable{
     #timestamp;
     #delta;
     #updateFrame;
-
+    #onFinish = undefined;
+    #reportedFinished = new Set();
     /**
      * @param {Object} [options = {}] The options to configure created manager.
      * @param {Array<string>} [options.names = []] The list of unique names for provided `playables` list (one to one mapped).
      * @param {Array<Playable>} [options.playables = []] The list of Playables to be stored in the catalogue.
      * @param {Object<string, Playable>} [options.namedPlayables] Object containing `name : playable` entriies, if provided
-     */
-    constructor({names = [], playables = [], namedPlayables = undefined, run=false} = {}){
+     * @param {boolean} [options.run = false] Runs the PlayableManager immediately after creation.
+     * @param {function(string) : void} [options.onFinish] Method to invoke upon completion.
+     * Of the type `function(playableName) : void`.
+    */
+    constructor({names = [], playables = [], namedPlayables = undefined, run=false, onFinish} = {}){
         super();
             
         this._playableState = Playable.state.PAUSED;
@@ -63,6 +67,8 @@ class PlayableManager extends Playable{
             if(this._playableState === Playable.state.PLAYING) requestAnimationFrame(this.#updateFrame);
             else this.#timestamp = undefined;
         }
+        if (typeof onFinish === "function")
+            this.#onFinish = onFinish;
         if (run) this.run();
     }
     //private functions
@@ -283,9 +289,18 @@ class PlayableManager extends Playable{
     play(dt){
         let finished = true;
         let paused = true;
-        for (const playable of this.#playables.values()){
+        for (const playableName of this.#playables.keys()){
+            const playable = this.#playables.get(playableName);
             playable.play(dt);
-            finished &&= (playable._playableState === Playable.state.FINISHED);
+            const hasFinished = (playable._playableState === Playable.state.FINISHED);
+            if (hasFinished && !this.#reportedFinished.has(playableName)){
+                this.#reportedFinished.add(playableName);
+                this.#onFinish?.(playableName);
+            }
+            else if (!hasFinished){
+                this.#reportedFinished.delete(playableName);
+            }
+            finished &&= hasFinished;
             paused &&= (playable._playableState === Playable.state.PAUSED);
         }
         return finished ? Playable.state.FINISHED : (paused ? Playable.state.PAUSED : Playable.state.PLAYING);

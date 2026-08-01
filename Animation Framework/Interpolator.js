@@ -173,7 +173,7 @@ class Interpolator{
      * @param {Object} [options] Options to configure the created Interpolator.
      * @param {string} [options.type = Interpolator.func.SMOOTHSTEP] Built-in interpolation type.
      * @param {Object} [options.params = {}] Parameters passed to the interpolator generator.
-     * @param {Interpolator} [interpolator] Existing Interpolator to copy. If provided, all other parameters are ignored. 
+     * @param {Interpolator} [options.interpolator] Existing Interpolator to copy. If provided, all other parameters are ignored. 
      */
     constructor({
         type = Interpolator.func.SMOOTHSTEP, 
@@ -193,8 +193,7 @@ class Interpolator{
             }
         }
         else{ //copy constructor
-            this.#funcName = interpolator.funcName;
-            this.#interpFunc = interpolator.interpolationFunction;
+            this.copy(interpolator);
         }
     }
     //getter
@@ -272,8 +271,10 @@ class Interpolator{
      * @param {Interpolator} interpolator The Interpolator to copy.
      */
     copy(interpolator){
-        this.#funcName = interpolator.funcName;
-        this.#interpFunc = interpolator.funcName;
+        if (!(interpolator instanceof Interpolator))
+            throw new Error("Argument must be an Interpolator.")
+        this.#funcName = interpolator.#funcName;
+        this.#interpFunc = interpolator.#interpFunc;
     }
 }
 

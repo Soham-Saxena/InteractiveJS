@@ -32,9 +32,6 @@ class KeyFrame{
             if (state === undefined)
                 throw new TypeError("state is required.");
 
-            if (absTime === undefined)
-                throw new TypeError("absTime is required.");
-
             this.#state = structuredClone(state);
             this.#absTime = absTime;
             if (transition === undefined) this.#transition = new Transition();

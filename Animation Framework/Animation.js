@@ -24,23 +24,30 @@ class Animation extends Playable{
      * @param {*} [options.endState = undefined] Ending state of animation (at t = duration)
      * @param {function(*): void} [options.onUpdate] Callback invoked whenever the animation state is updated. Receives the **current state**.
      * @param {function(*): void} [options.onFinish] Callback invoked when the animation finishes. Receives the **end state**.
+     * @param {Animation} [copy] Existing Animation to create a copy of. Ignores all other params if provided.
      */
     constructor({
         transition = new Transition(), 
         startState = undefined, 
         endState = undefined, 
         onUpdate = undefined,
-        onFinish = undefined
+        onFinish = undefined,
+        copy = undefined
     } = {})
     {
-        super();
-        this.#transition = transition;
-        if (!transition.enabled) this._playableState = Playable.state.FINISHED;
-        this.#startState = startState;
-        this.#endState = endState;
-        this.#currentState = undefined;
-        if (typeof onUpdate === "function") this.#updateState = onUpdate;
-        if (typeof onFinish === "function") this.#onFinish = onFinish;
+        if (copy === undefined){
+            super();
+            this.#transition = transition;
+            if (!transition.enabled) this._playableState = Playable.state.FINISHED;
+            this.#startState = startState;
+            this.#endState = endState;
+            this.#currentState = undefined;
+            if (typeof onUpdate === "function") this.#updateState = onUpdate;
+            if (typeof onFinish === "function") this.#onFinish = onFinish;
+        }
+        else{
+            this.copy(copy);
+        }
     }
     //private functions
     #cloneState(state){
@@ -191,8 +198,9 @@ class Animation extends Playable{
      * @param {Object} frames Object containing start and end frame.
      * @param {KeyFrame} frames.startFrame Starting {@link KeyFrame} of the Animation.
      * @param {KeyFrame} frames.endFrame Ending {@link KeyFrame} of the Animation.
+     * @param {boolean} [frames.reset = true] Whether to reset the animation after setting the limits and transition.
      */
-    set keyFrames({startFrame, endFrame} = {}){
+    set keyFrames({startFrame, endFrame, reset = true} = {}){
         let duration = (endFrame.time - startFrame.time);
         if (typeof startFrame.transition === "string" || typeof endFrame.transition === "string")
             throw new Error("Cannot create an animation from a hold keyframe.");
@@ -204,6 +212,7 @@ class Animation extends Playable{
         this.limits = {start : startFrame.state, end : endFrame.state};
         this.#transition.copy(startFrame.transition);
         this.transition.duration = duration;
+        if (reset) this.reset();
     }
     /**
      * Copies all attributes of the provided Animation.
@@ -211,6 +220,8 @@ class Animation extends Playable{
      * @param {Animation} animation The Animation to copy.
      */
     copy(animation){
+        if (!(animation instanceof Animation))
+                throw new Error("Argument must be an Animation.");
         this.#currentState = animation.#currentState;
         this.#elapsed = animation.#elapsed;
         this.#startState = animation.#startState;
@@ -302,7 +313,7 @@ class Animation extends Playable{
         if (this.#startState !== undefined && this.#endState !== undefined){
             const delay = this.#transition.delay; 
             this.#elapsed += this.#reversed ? -deltaT : deltaT;
-            this.#currentState = this.#transition.transform(this.start, this.end, this.#elapsed - delay);
+            this.#currentState = this.#transition.transform(this.start, this.end, this.#elapsed);
             if ((this.#reversed && this.#elapsed <= 0) || (!this.#reversed && this.#elapsed >= (this.#transition.duration + delay))){
                 this._playableState = Playable.state.FINISHED;
                 this.#updateState(this.end);

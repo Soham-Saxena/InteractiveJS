@@ -51,13 +51,7 @@ class Transition{
             this.#enabled = enabled;
         }
         else{ //copy constructor
-            if (!(copy instanceof Transition))
-                throw new Error("copy must be a Transition.");
-            this.#duration = copy.duration;
-            this.#delay = copy.delay;
-            this.#interpolator = copy.interpolator;
-            this.#mutator = copy.mutator;
-            this.#enabled = copy.enabled;
+            this.copy(copy);
         }
     }
 
@@ -120,7 +114,7 @@ class Transition{
      */
     set interpolator({interpType, params = {}, interpolator = undefined} = {}){
         if (interpolator === undefined) this.#interpolator = new Interpolator({type : interpType, params : params});
-        else this.#interpolator = new Interpolator({interpolator : interpolator})
+        else this.#interpolator.copy(interpolator);
     }
     /**
      * Sets the duration of the Transition.
@@ -248,10 +242,12 @@ class Transition{
      * @param {Transition} transition 
      */
     copy(transition){
+        if (!(transition instanceof Transition))
+                throw new Error("Argument must be a Transition.");
         this.#delay = transition.#delay;
         this.#duration = transition.#duration;
         this.#enabled = transition.#enabled;
-        this.#interpolator.copy(transition.#interpolator);
+        this.#interpolator = new Interpolator({interpolator: transition.#interpolator});
         this.#mutator = transition.#mutator;
     }
 }

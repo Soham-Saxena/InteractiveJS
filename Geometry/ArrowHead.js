@@ -1,5 +1,11 @@
-const {Interpolator, Transition, PlayableManager, Playable, Animation} = require("../Animation Framework/index.js");
-
+const { time } = require("node:console");
+const {Interpolator, Transition, PlayableManager, Playable, Timeline} = require("../Animation Framework/index.js");
+/**
+ * @typedef {Object} point2D
+ * @property {number} x The x coordinate of the 2D point.
+ * @property {number} y The y coordinate of the 2D point.
+ */
+/** @typedef {import("../Animation Framework/Timeline.js")} Timeline */
 class ArrowHead{
 	#playableManager;
 	#FinalStates = {
@@ -8,30 +14,72 @@ class ArrowHead{
 		arrowSize : undefined,
 		finInc : undefined
 	};
+	#delays = {
+		direction : 0,
+		origin : 0,
+		arrowSize : 0,
+		finInc : 0
+	};
+	#durations = {
+		direction : 0,
+		origin : 0,
+		arrowSize : 0,
+		finInc : 0
+	};
+	#timelinesPlaying = {
+		direction : false,
+		origin : false,
+		arrowSize : false,
+		finInc : false
+	};
 
+	/** 
+	 * @param {Object} [options] The options to configure created ArrowHead.
+	 * @param {point2D} [options.arrowOrigin = {x : 0, y : 0}] 2D point representing the location of the center of the ArrowHead
+	 * in the coordinate plane.
+	 * @param {number} [options.headDirection = 0] Angle that the ArrowHead is facing with respect to X axis.
+	 * Internally stored in radians.
+	 * @param {boolean} [options.hRadian = true] if `true`, treats `headDirection` as a radian value; else treats it as
+	 * degrees and coverts accordingly.
+	 * @param {number} [options.finAngle = (35) * (Math.PI/180)] Angle of the arrow fins with respect to the body of the ArrowHead.
+	 * Internally stored in radians.
+	 * @param {boolean} [options.fRadian = true] if `true`, treats `finAngle` as a radian value; else treats it as
+	 * degrees and converts accordingly.
+	 * @param {number} [options.arrowSize = 10] Defines the size of the ArrowHead (distance of the end points from the origin).
+	 * @param {number} [options.precision = 2] Determines the precision of the points included in {@link pathScript}
+	 * Lesser precision leads to less space taken at the cost of losing information.
+	 * @param {string} [options.interpolator = Interpolator.func.SMOOTHSTEP] The Interpolator type from 
+	 * {@link Interpolator Interpolator's} built-in catalogue.
+	 * @param {Object} [options.interpolatorParams = {}] The parameters to pass to {@link Interpolator Interpolator's} 
+	 * function generator.
+	 * @param {typeof Timeline.Mode.RELATIVE} [options.timelineMode = Timeline.Mode.RELATIVE] The operating mode of the
+	 * interal Timeline class.
+	 * @param {ArrowHead} [copy = undefined] Existing ArrowHead to create a copy of. If supplied, ignores all other parameters.
+	 */
 	constructor({
 		arrowOrigin = {x : 0, y : 0},
 		headDirection= 0,  hRadian = true,
 		finAngle= (35) * (Math.PI/180.00), fRadian = true,
 		arrowSize=10, precision=2, 
-		arrow=undefined, 
 		interpolator = Interpolator.func.SMOOTHSTEP,
 		interpolatorParams = {},
+		timelineMode = Timeline.Mode.RELATIVE,
+		copy = undefined
 	} = {}){
 		this.#playableManager = new PlayableManager();
-		if (arrow === undefined){
+		if (copy === undefined){
             this._origin = {x : arrowOrigin.x, y : arrowOrigin.y};
             this.theta = hRadian ? headDirection : (Math.PI/180) * headDirection;
-            this.alpha = fRadian ? headDirection : (Math.PI/180) * finAngle;
+            this.alpha = fRadian ? finAngle : (Math.PI/180) * finAngle;
             this.distance = arrowSize;
             this.precision = precision;
         }
         else{//copy constructor
-            this._origin = {x : arrow._origin.x, y : arrow._origin.y};
-            this.theta = arrow.theta;
-            this.alpha = arrow.alpha;
-            this.distance = arrow.distance;
-            this.precision = arrow.precision;
+            this._origin = {x : copy._origin.x, y : copy._origin.y};
+            this.theta = copy.theta;
+            this.alpha = copy.alpha;
+            this.distance = copy.distance;
+            this.precision = copy.precision;
         }
         this.lowerAngle = this.theta + this.alpha - Math.PI;
         this.upperAngle = this.theta - this.alpha + Math.PI;
@@ -39,74 +87,111 @@ class ArrowHead{
                         y : this._origin.y + this.distance*Math.sin(this.upperAngle)};
         this.lowerPoint = {x : this._origin.x + this.distance*Math.cos(this.lowerAngle),
                         y : this._origin.y + this.distance*Math.sin(this.lowerAngle)};
-		const tempInterpolator = new Interpolator({type : interpolator, params : interpolatorParams});
-		let tempTransition = undefined;
-		let tempAnimation;
 
-		if (arrow !== undefined) tempTransition = new Transition({transition : arrow.attrAnimation("origin").transition});
-		else tempTransition = undefined;
-		tempAnimation = this.#createAnimation((p1, p2, t) => {
-			return {
-				x : p1.x * (1-t) + p2.x * t,
-				y : p1.y * (1-t) + p2.y * t
-			}}, 
-			(state) => { 
-				this._origin.x = state.x;
-				this._origin.y = state.y;
-				this.#updatePoints();
-			 },
-			() => { this.#FinalStates.origin = undefined; },
-			tempInterpolator,
-			tempTransition
-		);
-		this.#playableManager.addPlayable("origin", tempAnimation);
-
-		if (arrow !== undefined) tempTransition = new Transition({transition : arrow.attrAnimation("direction").transition});
-		else tempTransition = undefined;
-		tempAnimation = this.#createAnimation((angle1, angle2, t) => {
-				return angle1 * (1-t) + angle2 * t;
-			}, 
-			(state) => { 
-				this.theta = state;
-				this.#updatePoints(); 
+		this.#playableManager.addPlayable("origin", new Timeline({
+			mode: timelineMode,
+			onFinish: () => {
+				this.#FinalStates.origin = undefined;
 			},
-			() => { this.#FinalStates.direction = undefined; },
-			tempInterpolator,
-			tempTransition
-		);
-		this.#playableManager.addPlayable("direction", tempAnimation);
-
-		if (arrow !== undefined) tempTransition = new Transition({transition : arrow.attrAnimation("size").transition});
-		else tempTransition = undefined;
-		tempAnimation = this.#createAnimation((d1, d2, t) => {
-				return d1 * (1-t) + d2 * t;
-			}, 
-			(state) => { 
-				state = (state < 0) ? 0 : state;
-				this.distance = state;
+			onFrameChange: (prevPoint, nextPoint) => {
+				this.#FinalStates.origin = nextPoint;
+			},
+			onUpdate: (newPoint) => {
+				this._origin.x = newPoint.x;
+				this._origin.y = newPoint.y;
 
 				this.#updatePoints();
 			},
-			() => { this.#FinalStates.arrowSize = undefined; },
-			tempInterpolator,
-			tempTransition
-		);
-		this.#playableManager.addPlayable("size", tempAnimation);
-
-		if (arrow !== undefined) tempTransition = new Transition({transition : arrow.attrAnimation("finAngle").transition});
-		else tempTransition = undefined;
-		tempAnimation = this.#createAnimation((angle1, angle2, t) => {
-			return angle1 * (1-t) + angle2 * t;
-			}, 
-			(state) => { 
-				this.alpha = state;
-				this.#updatePoints(); 
+			sameState: (p1, p2) => {
+				return (p1.x === p2.x) && (p1.y === p2.y);
 			},
-			() => { this.#FinalStates.finInc = undefined; },
-			tempInterpolator,
-			tempTransition
-		);
-		this.#playableManager.addPlayable("finAngle", tempAnimation);
+			transition: new Transition({
+				interpType: interpolator,
+				interpolatorParams: interpolatorParams,
+				enabled: true,
+				mutator: (p1, p2, t) => {
+					return {
+						x : p1.x * (1 - t) + p2.x * t,
+						y : p1.y * (1 - t) + p2.y * t 
+					};
+				}
+			})
+		}))
+		this.#playableManager.addPlayable("direction", new Timeline({
+			mode: timelineMode,
+			onFinish: () => {
+				this.#FinalStates.direction = undefined;
+			},
+			onFrameChange: (prevAngle, nextAngle) => {
+				this.#FinalStates.direction = nextAngle;
+			},
+			onUpdate: (newAngle) => {
+				this.theta = newAngle;
+				this.#updatePoints();
+			},
+			sameState: (a1, a2) => {
+				return this.#nearlyEqual(a1, a2);
+			},
+			transition: new Transition({
+				interpType: interpolator,
+				interpolatorParams: interpolatorParams,
+				enabled: true,
+				mutator: (a1, a2, t) => {
+					return a1 * (1 - t) + a2 * t;
+				}
+			})
+		}))
+		this.#playableManager.addPlayable("arrowSize", new Timeline({
+			mode: timelineMode,
+			onFinish: () => {
+				this.#timelinesPlaying.arrowSize = false;
+				this.#FinalStates.arrowSize = undefined;
+			},
+			onFrameChange: (prevSize, nextSize) => {
+				this.#FinalStates.arrowSize = nextSize;
+			},
+			onUpdate: (newSize) => {
+				newSize = (newSize < 0) ? 0 : newSize;
+				this.distance = newSize;
+
+				this.#updatePoints();
+			},
+			sameState: (d1, d2) => {
+				return (d1 === d2)
+			},
+			transition: new Transition({
+				interpType: interpolator,
+				interpolatorParams: interpolatorParams,
+				enabled: true,
+				mutator: (d1, d2, t) => {
+					return d1 * (1 - t) + d2 * t;
+				}
+			})
+		}))
+		this.#playableManager.addPlayable("finInc", new Timeline({
+			mode: timelineMode,
+			onFinish: () => {
+				this.#FinalStates.finInc = undefined;
+			},
+			onFrameChange: (prevAngle, nextAngle) => {
+				this.#FinalStates.finInc = nextAngle;
+			},
+			onUpdate: (newAngle) => {
+				this.alpha = newAngle;
+				this.#updatePoints();
+			},
+			sameState: (a1, a2) => {
+				return this.#nearlyEqual(a1, a2);
+			},
+			transition: new Transition({
+				interpType: interpolator,
+				interpolatorParams: interpolatorParams,
+				enabled: true,
+				mutator: (a1, a2, t) => {
+					return a1 * (1 - t) + a2 * t;
+				}
+			})
+		}))
 	}
 	//private functions
 	#updatePoints(){
@@ -120,17 +205,23 @@ class ArrowHead{
 	#retrievePlayable(name){
 		return this.#playableManager.playable(name);
 	}
-	#createAnimation(mutator, onUpdate, onFinish, interpolator, tempTransition = undefined){
-		const transition = tempTransition ?? new Transition({
-			interpolator : interpolator,
-			mutator : mutator,
-			enabled : false
-		});
-		return new Animation({
-			transition : transition,
-			onUpdate : onUpdate,
-			onFinish : onFinish
-		});
+	#nearlyEqual(a, b, epsilon = 1e-9) {
+    	return Math.abs(a - b) < epsilon;
+	}
+	#updateTimeline(name, start, stop){
+		/** @type Timeline */
+		const timeline = this.#playableManager.playable(name);
+		if (timeline === undefined)
+			return;
+		
+		timeline.clearTimeline(true, Timeline.Mode.RELATIVE);
+			
+		timeline.
+			from(start).
+			wait(this.#delays[name]).
+			to(stop, this.#durations[name]);
+		if (timeline._playableState === Playable.state.PAUSED) timeline.resume();
+		else if (timeline._playableState === Playable.state.FINISHED) timeline.reset();
 	}
 
 	//getters
@@ -196,19 +287,17 @@ class ArrowHead{
 			theta = angle * Math.PI/180.00;
 		}
 		if (!svg) theta = -theta;
-		if (this.targetDirection.radian === theta) return;
-		if (!this.#retrievePlayable("direction").transition.enabled){
+		if (this.#nearlyEqual(this.targetDirection.radian, theta)){
+			return;
+		}
+		if (this.#retrievePlayable("direction").playableState === Playable.state.PAUSED){
 			this.theta = theta;
 			this.#updatePoints();
 		}
 		else{
-			/** @type Animation */
-			const animation = this.#playableManager.playable("direction");
-			animation.limits = {
-				start : this.theta,
-				end : theta
-			};
-			if (animation.playableState === Playable.state.FINISHED || animation.playableState === Playable.state.PLAYING) animation.reset();
+			this.#updateTimeline("direction", this.theta, theta);
+
+			this.#timelinesPlaying["direction"] = true;
 			this.#FinalStates["direction"] = theta;
 			this.#playableManager.run();
 		}
@@ -217,19 +306,18 @@ class ArrowHead{
 		if (!radian){
 			angle = angle * (Math.PI)/180;
 		}
-		if (angle === this.targetFinInc.radian) return;
-		if (!this.#retrievePlayable("finAngle").transition.enabled){
+		if (this.#nearlyEqual(angle, this.targetFinInc.radian)) {
+			return;
+		}
+		console.log(this.targetFinInc.radian, angle);
+		if (this.#retrievePlayable("finInc").playableState === Playable.state.PAUSED){
 			this.alpha = angle;
 			this.#updatePoints();
 		}
 		else{
-			/** @type Animation */
-			const animation = this.#playableManager.playable("finAngle");
-			animation.limits = {
-				start : this.alpha,
-				end : angle
-			};
-			if (animation.playableState === Playable.state.FINISHED || animation.playableState === Playable.state.PLAYING) animation.reset();
+			this.#updateTimeline("finInc", this.alpha, angle);
+
+			this.#timelinesPlaying["finInc"] = true;
 			this.#FinalStates["finInc"] = angle;
 			this.#playableManager.run();
 		}
@@ -239,40 +327,32 @@ class ArrowHead{
 		if (
 			point.x === pt.x && point.y === pt.y
 		) return;
-		if (!this.#retrievePlayable("origin").transition.enabled){
+		if (this.#retrievePlayable("origin").playableState === Playable.state.PAUSED){
 			this._origin.x = point.x;
 			this._origin.y = point.y;
 
 			this.#updatePoints();
 		}
 		else {
-			/** @type Animation */
-			const animation = this.#playableManager.playable("origin");
-			animation.limits = {
-				start : { x : this._origin.x, y : this._origin.y },
-				end : point
-			};
-			if (animation.playableState === Playable.state.FINISHED || animation.playableState === Playable.state.PLAYING) animation.reset();
+			this.#updateTimeline("origin", this._origin, point);
+
+			this.#timelinesPlaying["origin"] = true;
 			this.#FinalStates["origin"] = point;
 			this.#playableManager.run();
 		}
 	}
     set arrowSize(size){
 		if (size === this.targetArrowSize) return;
-		if (!this.#retrievePlayable("size").transition.enabled){
+		if (this.#retrievePlayable("arrowSize").playableState === Playable.state.PAUSED){
 			size = (size < 0) ? 0 : size;
 			this.distance = size;
 
 			this.#updatePoints();
 		}
 		else {
-			/** @type Animation*/
-			const animation = this.#playableManager.playable("size");
-			animation.limits = {
-				start : this.arrowSize,
-				end : size
-			};
-			if (animation.playableState === Playable.state.FINISHED || animation.playableState === Playable.state.PLAYING) animation.reset();
+			this.#updateTimeline("arrowSize", this.distance, size);
+
+			this.#timelinesPlaying["arrowSize"] = true;
 			this.#FinalStates["arrowSize"] = size;
 			this.#playableManager.run();
 		}
@@ -287,33 +367,49 @@ class ArrowHead{
 		duration,
 		delay,
 		enabled = true
-	}){
-		if (configurationList === undefined){
-			/** @type Animation */
-			const animation = this.#retrievePlayable(name);
-			if (animation === undefined) return;
+	} = {}){
+		console.log(name);
 
-			animation.transition.configure = {
-				duration : duration,
-				delay : delay,
-				interpolator : interpolator,
-				interpType : interpType, params : params,
-				enabled : enabled
-			};
+		if (configurationList === undefined){
+			/** @type Timeline */
+			const timeline = this.#retrievePlayable(name);
+			if (timeline === undefined) return;
+			if (timeline.locked) timeline.unlock();
+
+			timeline.transform({interpolator: interpolator, interpType: interpType, params: params});
+			this.#delays[name] = delay ?? this.#delays[name];
+			this.#durations[name] = duration ?? this.#durations[name];
+			console.log({
+				state: timeline.playableState,
+				PAUSED: Playable.state.PAUSED,
+				enabled
+			});
+
+			if (timeline.playableState === Playable.state.PLAYING && !enabled){
+				this.#playableManager.pause(name);
+				return;
+			}
+			else if (timeline.playableState === Playable.state.PAUSED && enabled){
+				this.#playableManager.resume(name);
+			}
+
 		}
 		else{
 			for (const configuration of configurationList){
-				const {name, interpolator, interpType, params, duration, delay} = configuration;
-				const animation = this.#retrievePlayable(name);
-				if (animation === undefined) continue;
+				const {name, interpolator, interpType, params, duration, delay, enabled} = configuration;
+				const timeline = this.#retrievePlayable(name);
+				if (timeline === undefined) continue;
 
-				animation.transition.configure = {
-					duration : duration,
-					delay : delay,
-					interpolator : interpolator,
-					interpType : interpType, params : params,
-					enabled : true
-				};
+				timeline.transform({interpolator: interpolator, interpType: interpType, params: params});
+				this.#delays[name] = delay ?? this.#delays[name];
+				this.#durations[name] = duration ?? this.#durations[name];
+
+				if (timeline.playableState === Playable.state.PLAYING && !enabled){
+					timeline.pause();
+					continue;
+				}
+				else if (timeline.playableState === Playable.state.PAUSED && enabled)
+					timeline.resume();
 			}
 		}
 	}

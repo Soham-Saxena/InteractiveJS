@@ -1,14 +1,14 @@
 const Playable = require("./Playable.js");
 const KeyFrame = require("./KeyFrame.js");
 const Transition = require("./Transition.js");
-const { Animation } = require("./index.js");
+const Animation = require("./Animation.js");
 
 /**@typedef {import("./Interpolator.js")} Interpolator*/
 
 
-class TimeLine extends Playable{
+class Timeline extends Playable{
     /**
-     * Modes supported by the {@link TimeLine} class.
+     * Modes supported by the {@link Timeline} class.
      * - `RELATIVE` : Treats durations as the source of truth, therefore keyframes have to be defined
      * with respect to previous keyframes.
      * - `ABSOLUTE` : Treats absolute timestamps as the source of truth, therefore keyframes have to be
@@ -49,25 +49,26 @@ class TimeLine extends Playable{
     #compiled = false;
     #locked = false;
     /**
-     * @param {Object} options The options to configure the TimeLine.
-     * @param {typeof TimeLine.Mode} [mode = TimeLine.Mode.RELATIVE] The mode used to initialize the timeline, `TimeLine.Mode.RELATIVE`
+     * @param {Object} options The options to configure the Timeline.
+     * @param {typeof Timeline.Mode} [options.mode = Timeline.Mode.RELATIVE] The mode used to initialize the timeline, `Timeline.Mode.RELATIVE`
      * if not provided.
-     * @param {Transition} [transition] The {@link Transition} to use to move from one {@link KeyFrame} to another.
+     * @param {Transition} [options.transition] The {@link Transition} to use to move from one {@link KeyFrame} to another.
      * Applies the default Transition if not provided.
-     * @param {function(*) : void} [onUpdate] The method to invoke on update (via {@link play()}).
+     * @param {function(*) : void} [options.onUpdate] The method to invoke on update (via {@link play()}).
      * - Expected to be of the form `function(newState) : void`
-     * @param {function(*) : void} [onFinish] The method to invoke upon completing the TimeLine.
+     * @param {function(*) : void} [options.onFinish] The method to invoke upon completing the Timeline.
      * - Expected to be of the form `function(lastState) : void`
-     * @param {function(*, *) : void} [onFrameChange] The method to invoke upon moving from one {@link KeyFrame} to another.
+     * @param {function(*, *) : void} [options.onFrameChange] The method to invoke upon moving from one {@link KeyFrame} to another.
      * - Expected to be of the form `function(prevState, nextState) : void` 
-     * @param {function(*, *) : boolean} [sameState] Comparison function to test whether two states
-     * are equivalent. Used to optimize the TimeLine by reducing duplicate {@link KeyFrame KeyFrames}.
-     * 
+     * @param {function(*, *) : boolean} [options.sameState] Comparison function to test whether two states
+     * are equivalent. Used to optimize the Timeline by reducing duplicate {@link KeyFrame KeyFrames}.
+     * @param {Timeline} copy Existing Timeline to create a copy of. If provided, all other parameters are ignored.
      * **Note:** Although optional, it is highly recommend to provide one, as otherwise extra memory will be wasted
      * on duplicate KeyFrames that could have been reduced.
      */
-    constructor({mode, transition, onUpdate, onFinish, onFrameChange, sameState} = {}){
+    constructor({mode, transition, onUpdate, onFinish, onFrameChange, sameState, copy=undefined} = {}){
         super();
+
         if(transition instanceof Transition)
             this.#transition = new Transition({copy : transition});
         if (typeof onFinish === "function")
@@ -75,10 +76,10 @@ class TimeLine extends Playable{
         if (typeof onFrameChange === "function"){
             this.#onFrameChange = onFrameChange;
         }
-        if (mode === TimeLine.Mode.ABSOLUTE || mode === TimeLine.Mode.RELATIVE){
+        if (mode === Timeline.Mode.ABSOLUTE || mode === Timeline.Mode.RELATIVE){
             this.#mode = mode;
         }
-        else this.#mode = TimeLine.Mode.RELATIVE;
+        else this.#mode = Timeline.Mode.RELATIVE;
         if (typeof sameState === "function"){
             this.#sameState = sameState;
         }
@@ -115,13 +116,13 @@ class TimeLine extends Playable{
     #assertMode(expectedMode){
         this.#mode = this.#mode ?? expectedMode;
         if (this.#mode !== expectedMode) 
-            throw new Error(`Violating TimeLines Mode: ${this.#mode}`);
+            throw new Error(`Violating Timelines Mode: ${this.#mode}`);
     }
     #assertBuilderFunc(){
         if(this.#locked)
-            throw new Error("Unlock TimeLine in order to build/modify.");
-        if((this._playableState ?? Playable.state.FINISHED) != Playable.state.FINISHED)
-            throw new Error("Cannot modify TimeLine while its running")
+            throw new Error("Unlock Timeline in order to build/modify.");
+        if((this._playableState ?? Playable.state.PAUSED) === Playable.state.PLAYING)
+            throw new Error("Cannot modify Timeline while its running")
     }
     #binarySearch(timestamp, forInsert = false, array = undefined){
         const arr = array?? this.#keyframes;
@@ -184,84 +185,89 @@ class TimeLine extends Playable{
     }
     #compileAbsolute(){
         const length = this.#keyframes.length;
-        if (length === 0) return;
-        for (let i = length - 1; i >= 0; i++){
-            /**@type KeyFrame*/
+        if (length <= 1) return;
+
+        const result = []; // built right-to-left; reversed at the end
+        let i = length - 1;
+
+        while (i >= 0){
             const currFrame = this.#keyframes[i];
 
-            if(currFrame.transition === KeyFrame.HOLD){
-                /**@type KeyFrame*/
-                const prevFrame = this.#keyframes[i - 1];
-                if (prevFrame?.transition === KeyFrame.HOLD){
-                    this.#keyframes.splice(i - 1, 1);
+            if (currFrame.transition === KeyFrame.HOLD){
+                let runStart = i;
+                while (runStart - 1 >= 0 && this.#keyframes[runStart - 1].transition === KeyFrame.HOLD){
+                    runStart--;
                 }
-                else{
-                    if (prevFrame !== undefined)
-                        prevFrame.transition.delay = currFrame.time - prevFrame.time;
-                    this.#keyframes.splice(i, 1);
+                const prevFrame = this.#keyframes[runStart - 1];
+                if (prevFrame !== undefined){
+                    prevFrame.transition.delay = currFrame.time - prevFrame.time; // currFrame = rightmost HOLD in the run
                 }
+                i = runStart - 1;
+                continue;
             }
-            else if (this.#sameState !== undefined){
-                /**@type KeyFrame*/
-                const nextFrame = this.#keyframes[i + 1];
-                if (nextFrame !== undefined && this.#sameState(currFrame.state, nextFrame.state)){
-                    this.#keyframes.splice(i, 1);
-                }
+
+            const nextFrame = result.length > 0 ? result[result.length - 1] : undefined;
+            if (this.#sameState !== undefined && nextFrame !== undefined && this.#sameState(currFrame.state, nextFrame.state)){
+                i--; // drop currFrame — its delay (if any was just assigned) is discarded along with it, matching original
+                continue;
             }
+
+            result.push(currFrame);
+            i--;
         }
+
+        result.reverse();
+        this.#keyframes = result;
+        if (this.#keyframes.length = 0)
+            return;
         if (this.#keyframes[0].time !== 0){
             this.#keyframes[0].transition.delay += (this.#keyframes[0].time);
             this.#keyframes[0].time = 0;
         }
     }
     #absolutizeKf(kf, prevTime, holdKeyframe = false){
-        kf.time = (prevTime += kf.time);
+        const duration = kf.time;      // duration to the *next* keyframe
+        kf.time = prevTime;            // this keyframe's own absolute time
         let holdTime = undefined;
-        if (holdKeyframe){
+        if (holdKeyframe && kf.transition.delay > 0){
             holdTime = kf.time + kf.transition.delay;
             kf.transition.delay = 0;
         }
         return {
-            newTime : prevTime,
+            newTime : prevTime + duration,
             holdTime : holdTime
         };
     }
     #transformRelative(holdKeyframes = false, copy = false){ //transforms relative to absolute
-        this.#assertMode(TimeLine.Mode.RELATIVE);
+        this.#assertMode(Timeline.Mode.RELATIVE);
 
         let time = 0;
+        const result = [];
+
+        this.#keyframes.forEach((kf) => {
+            const target = copy ? new KeyFrame({copy : kf}) : kf;
+            const {newTime, holdTime} = this.#absolutizeKf(target, time, holdKeyframes);
+
+            time = newTime;
+            result.push(target);
+            if (holdTime !== undefined){
+                if (holdTime >= newTime)   // hold time landed at-or-past the *next* keyframe — invalid delay/duration relationship
+                    throw new Error("Transition delay exceeds segment duration; cannot insert HOLD keyframe.");
+                result.push(new KeyFrame({ absTime : holdTime, transition : KeyFrame.HOLD }));
+            }
+        });
+
         if (!copy){
-            this.#mode = TimeLine.Mode.ABSOLUTE;
-            const holdTimes = [];
-            this.#keyframes.forEach((kf) => {
-                const {newTime, holdTime} = this.#absolutizeKf(kf, time, holdKeyframes);
-                if(holdTime !== undefined) holdTimes.push(holdTime);
-                time = newTime;
-            })
-            holdTimes.forEach(ht => this.#insertAt(ht, KeyFrame.HOLD));
+            this.#mode = Timeline.Mode.ABSOLUTE;
+            this.#keyframes = result;
             return null;
         }
         else{
-            const copy = [];
-            this.#keyframes.forEach((kf) => {
-                const copyKf = new KeyFrame({copy : kf});
-                const {newTime, holdTime} = this.#absolutizeKf(copyKf, time, holdKeyframes);
-                
-                time = newTime;
-                copy.push(copyKf);
-                if(holdTime !== undefined){
-                    const {index, found} = this.#binarySearch(holdTime, true, copy);
-                    if(found) //should never trigger lol
-                        throw new Error("Cannot create copy with duplicate timestamps");
-                    copy.splice(index, 0, new KeyFrame({ absTime : holdTime, transition : KeyFrame.HOLD}));
-                }
-            }) 
-
-            return copy;
+            return result;
         }
     }
     #transformAbsolute(copy = false){ //transforms absolute to relative
-        this.#assertMode(TimeLine.Mode.ABSOLUTE);
+        this.#assertMode(Timeline.Mode.ABSOLUTE);
 
         const length = this.#keyframes.length;
         if (length === 0) return;
@@ -269,65 +275,37 @@ class TimeLine extends Playable{
             this.#keyframes[0].transition.delay += (this.#keyframes[0].time);
             this.#keyframes[0].time = 0;
         }
-        
-        if (!copy){
-            this.#mode = TimeLine.Mode.RELATIVE;
-            for(let i = length - 1; i >= 0; i++){
-                /**@type KeyFrame*/
-                const currFrame = this.#keyframes[i];
-
-                if(currFrame.transition === KeyFrame.HOLD){
-                    /**@type KeyFrame*/
-                    const prevFrame = this.#keyframes[i - 1];
-                    if (prevFrame?.transition === KeyFrame.HOLD){
-                        this.#keyframes.splice(i - 1, 1);
-                    }
-                    else{
-                        if (prevFrame !== undefined)
-                            prevFrame.transition.delay = currFrame.time - prevFrame.time;
-                        this.#keyframes.splice(i, 1);
-                    }
+        let duration = 0;
+        const transformedKeyFrames = []
+        for(let i = 0; i < length; i++){
+            /**@type KeyFrame*/
+            const currFrame = new KeyFrame({copy : this.#keyframes[i]});
+            /**@type KeyFrame*/
+            let nextFrame = this.#keyframes[i + 1];
+            if (nextFrame?.transition === KeyFrame.HOLD){
+                let count = i + 1;
+                while(this.#keyframes[++count]?.transition === KeyFrame.HOLD){}
+                nextFrame = this.#keyframes[count];
+                if (nextFrame !== undefined){
+                    const waitTime = this.#keyframes[count-1].time - currFrame.time;
+                    currFrame.transition.delay = waitTime;
+                    currFrame.time = nextFrame.time - currFrame.time;
                 }
                 else{
-                    /**@type KeyFrame*/
-                    const nextFrame = this.#keyframes[i + 1];
-                    if(nextFrame === undefined) currFrame.time = undefined;
-                    else currFrame.time = nextFrame.time - currFrame.time;
+                    currFrame.time = 0;
                 }
+                transformedKeyFrames.push(currFrame);
+                i = count - 1;
+            }
+            else{
+                if(nextFrame === undefined) currFrame.time = 0;
+                else currFrame.time = nextFrame.time - currFrame.time;
+                transformedKeyFrames.push(currFrame);
             }
         }
-        else{
-            const copy = []
-            for(let i = 0; i < length; i++){
-                /**@type KeyFrame*/
-                const currFrame = new KeyFrame({copy : this.#keyframes[i]});
-                /**@type KeyFrame*/
-                let nextFrame = this.#keyframes[i + 1];
-                if (nextFrame?.transition === KeyFrame.HOLD){
-                    let count = i + 1;
-                    while(this.#keyframes[++count]?.transition === KeyFrame.HOLD){
-                        nextFrame = this.#keyframes[count];
-                    }
-                    if (nextFrame?.transition !== KeyFrame.HOLD){
-                        const waitTime = this.#keyframes[count-1].time - currFrame.time;
-                        currFrame.transition.delay = waitTime;
-                        currFrame.time = nextFrame.time - currFrame.time;
-                    }
-                    else{
-                        currFrame.time = undefined;
-                    }
-                    copy.push(currFrame);
-                    i = count - 1;
-                }
-                else{
-                    if(nextFrame === undefined) currFrame.time = undefined;
-                    else currFrame.time = nextFrame.time - currFrame.time;
-                    copy.push(currFrame);
-                }
-            }
 
-            return copy;
-        }
+        if (copy) return transformedKeyFrames;
+        else this.#keyframes = transformedKeyFrames;
     }
     /**
      * @typedef {Object} boundingKeyframes Object containing bounding keyframes and a boolean.
@@ -352,21 +330,21 @@ class TimeLine extends Playable{
 
     //getter
     /**
-     * Returns the current mode the TimeLine is operating in.
+     * Returns the current mode the Timeline is operating in.
      * 
-     * @see{@link TimeLine.Mode Modes}
+     * @see{@link Timeline.Mode Modes}
      */
     get mode(){
         return this.#mode;
     }
     /**
-     * Returns whether the TimeLine is currently playing in reverse.
+     * Returns whether the Timeline is currently playing in reverse.
      *
-     * @returns {boolean} `true` if the TimeLine is reversed; otherwise `false`.
+     * @returns {boolean} `true` if the Timeline is reversed; otherwise `false`.
      */
     get reversed(){ return this.#reversed; }
     /**
-     * Returns the current {@link KeyFrame} of the TimeLine.
+     * Returns the current {@link KeyFrame} of the Timeline.
      *
      * @returns {KeyFrame} The current KeyFrame.
      */
@@ -374,9 +352,9 @@ class TimeLine extends Playable{
         return this.#currKf ?? (this.#reversed ? this.#keyframes.at(-1) : this.#keyframes[0]);
     }
     /**
-     * Returns the index of the current {@link KeyFrame} of the TimeLine.
-     * - if the TimeLine has stopped at an exact KeyFrame, will return that.
-     * - if the TimeLine is currently in the middle of transitioning between two keyframes, will return the `Lower Bound.`
+     * Returns the index of the current {@link KeyFrame} of the Timeline.
+     * - if the Timeline has stopped at an exact KeyFrame, will return that.
+     * - if the Timeline is currently in the middle of transitioning between two keyframes, will return the `Lower Bound.`
      * 
      * @returns {number} Index of the current KeyFrame.  
      */
@@ -389,7 +367,28 @@ class TimeLine extends Playable{
         
         return this.#binarySearch(lower.time);
     }
+    /**
+     * Returns whether the Timeline is currently locked or not.
+     * 
+     * @returns {boolean} `true` if the Timeline is locked; else `false`.
+     */
+    get locked(){
+        return this.#locked;
+    }
+    /**
+     * Returns the total duration of the Timeline, in **ms**.
+     *  
+     * @returns {number} The total duration of the Timeline.
+     */
+    get duration(){
+        if (this.#compiled || this.#mode === Timeline.Mode.ABSOLUTE)
+            return this.#keyframes.at(-1).time;
+        let duration = 0;
+        this.#keyframes.forEach(kf => duration += kf.time);
 
+        return duration;
+    }
+    
     //class functions
     /**
      * Returns the {@link KeyFrame} stored at the specified index.
@@ -406,13 +405,16 @@ class TimeLine extends Playable{
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
-     * @param {string} interpType The interpolator type stored by the {@link Interpolator} class
-     * @param {*} [params = {}] The parameters to pass to the interpolator generator.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @param {Object} options The options to configure the interpolator with.
+     * @param {Interpolator} options.interpolator An Existing interpolator to copy.
+     * Ignores all other params if provided.
+     * @param {string} options.interpType The interpolator type stored by the {@link Interpolator} class
+     * @param {*} [options.params = {}] The parameters to pass to the interpolator generator.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
-    transform(interpType, params = {}){
+    transform({interpolator, interpType, params = {}} = {}){
         this.#assertBuilderFunc();
         this.#transition.interpolator = {interpType : interpType, params : params};
 
@@ -423,14 +425,14 @@ class TimeLine extends Playable{
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * @param {function(*, *, number) : *} mutator Describes how to transform between two states based on interpolation value.
      * - of the type `(startState, endState, t) => state`.
      * - `t` ranges between `[0, 1]`.
      * - returns `startState` when `t = 0`.
      * - returns `endState` when `t = 1`.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     mutate(mutator){
         this.#assertBuilderFunc();
@@ -447,18 +449,18 @@ class TimeLine extends Playable{
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** Will throw if used in `RELATIVE` mode. Please ensure it is only used in `ABSOLUTE` mode.
      * 
      * @param {number} timestamp The absolute timestamp for the corresponding state, in **ms**. 
      * Must be a finite, non-negative number.
      * @param {*} state The state to store in the created {@link KeyFrame}.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     at(timestamp, state){
         this.#assertBuilderFunc();
-        this.#assertMode(TimeLine.Mode.ABSOLUTE);
+        this.#assertMode(Timeline.Mode.ABSOLUTE);
         this.#addWait(timestamp);
         const { index, kf } = this.#insertAt(timestamp, state);
         this.#moveCursor(kf, index);
@@ -467,27 +469,27 @@ class TimeLine extends Playable{
         return this;
     }
     /**
-     * Inserts a {@link KeyFrame} storing the provided state at the beginning of the TimeLine.
+     * Inserts a {@link KeyFrame} storing the provided state at the beginning of the Timeline.
      * It is a **mode-neutral** method and can be called in either mode.
      * - Inserts the KeyFrame at `t = 0` if operating in `ABSOLUTE` mode.
-     * - Creates the first KeyFrame in the TimeLine.
+     * - Creates the first KeyFrame in the Timeline.
      * - The created {@link KeyFrame} stores a copy of the current builder {@link Transition}, 
      * which is used when transitioning to the next {@link KeyFrame}.
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** This method may only be called once, regardless of the current mode.
      * 
-     * @param {*} state The state to store at the beginning of the TimeLine.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @param {*} state The state to store at the beginning of the Timeline.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     from(state){
         this.#assertBuilderFunc();
         if (this.#wait !== 0) 
             throw new Error("Cannot use from() while having a pending Hold.");
-        if (this.#mode === TimeLine.Mode.ABSOLUTE){
+        if (this.#mode === Timeline.Mode.ABSOLUTE){
             if (this.#keyframes.length !== 0)
                 throw new Error("From can only be called once.");
             const { index, kf } = this.#insertAt(0, state);
@@ -496,7 +498,7 @@ class TimeLine extends Playable{
         else{
             if (this.#keyframes.length !== 0)
                 throw new Error("From can only be called when no KeyFrames have been created.");
-            const kf = new KeyFrame({state : state, transition : this.#transition})
+            const kf = new KeyFrame({state : state, transition : this.#transition, absTime : 0});
             kf.transition.delay += this.#wait;
             this.#wait = 0;
             this.#keyframes.push(kf);
@@ -517,28 +519,28 @@ class TimeLine extends Playable{
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** Will throw if used in `ABSOLUTE` mode. Please ensure it is only used in `RELATIVE` mode.
      * 
      * @param {*} state The state to store in the created {@link KeyFrame}.
      * @param {number} duration The duration of the KeyFrame, in **ms**. Must be a positive, finite value.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     to(state, duration){
         this.#assertBuilderFunc();
         if(this.#keyframes.length === 0)
-            throw new Error("TimeLine must contain keyframes to utilize relative construction.");
+            throw new Error("Timeline must contain keyframes to utilize relative construction.");
         if(!this.#validateTime(duration, false))
             throw new Error("Duration must be a positive finite value.");
-        this.#assertMode(TimeLine.Mode.RELATIVE);
+        this.#assertMode(Timeline.Mode.RELATIVE);
         const cursor = this.#prevKf ?? {
             index: this.#keyframes.length - 1,
             kf: this.#keyframes.at(-1)
         };
         cursor.kf.time = duration + this.#wait;
         cursor.kf.transition.delay += this.#wait;
-        const kf = new KeyFrame({ state : state, transition : this.#transition});
+        const kf = new KeyFrame({ state : state, transition : this.#transition, absTime : 0});
         const index = cursor.index + 1;
         if (index === this.#keyframes.length) 
             this.#keyframes.push(kf);
@@ -557,19 +559,19 @@ class TimeLine extends Playable{
      * - Can be chained.
      *  
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** 
-     * - Will throw if mode has not been set. Please ensure TimeLine mode is set before using this method.
+     * - Will throw if mode has not been set. Please ensure Timeline mode is set before using this method.
      * - Accumlates previous unconsidered hold value and logs a warning.
      * 
      * @param {number} duration The duration of the wait period, in **ms**. Must be a positive, finite value.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     wait(duration){
         this.#assertBuilderFunc();
-        if (!this.#validateTime(duration, false)) 
-            throw new Error("Duration must be a positive finite value.");
+        if (!this.#validateTime(duration)) 
+            throw new Error("Duration must be a non negative finite value.");
         if (this.#mode === undefined)
             throw new Error("Mode must be specified before using wait.");
         if(this.#wait !== 0) console.warn("Accumulating previous unconsidered hold value");
@@ -583,10 +585,10 @@ class TimeLine extends Playable{
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * @see {@link wait()}
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     flushWait(){
         this.#assertBuilderFunc();
@@ -595,14 +597,14 @@ class TimeLine extends Playable{
         return this;
     }
     /**
-     * Resets the TimeLine cursor to the most recently inserted {@link KeyFrame}.
+     * Resets the Timeline cursor to the most recently inserted {@link KeyFrame}.
      * It is a **mode-neutral** method and can be called in either mode.
      * - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     resetCursor(){
         this.#assertBuilderFunc();
@@ -611,17 +613,17 @@ class TimeLine extends Playable{
         return this;
     }
     /**
-     * Moves the TimeLine cursor to the {@link KeyFrame} at the specified `index`.
+     * Moves the Timeline cursor to the {@link KeyFrame} at the specified `index`.
      * It is a **mode-neutral** method and can be called in either mode.
      *  - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** Ensure index is within range.
      * 
      * @param {number} index The index of the {@link KeyFrame} to move the cursor to.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     seekCursor(index){
         this.#assertBuilderFunc();
@@ -636,15 +638,15 @@ class TimeLine extends Playable{
      *  - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** In `ABSOLUTE` mode, throws if the resulting timestamp would violate the 
-     * chronological ordering of the TimeLine.
+     * chronological ordering of the Timeline.
      * 
      * @param {number} index The index of the {@link KeyFrame} to insert after.
      * @param {*} state The state to store in the created {@link KeyFrame}.
      * @param {number} duration The duration of the inserted KeyFrame, in **ms**. Must be a positive, finite value.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     after(index, state, duration){
         this.#assertBuilderFunc();
@@ -652,7 +654,7 @@ class TimeLine extends Playable{
             throw new Error("Duration must be a positive finite value.");
         const prevkf = this.#retrieveKf(index);
 
-        if (this.#mode === TimeLine.Mode.ABSOLUTE){
+        if (this.#mode === Timeline.Mode.ABSOLUTE){
             const nextKfTimestamp = prevkf.time + duration + this.#wait;
             this.#assertTimestampOrder(nextKfTimestamp, index + 1);
             this.#addWait(nextKfTimestamp);
@@ -688,15 +690,15 @@ class TimeLine extends Playable{
      *  - Can be chained.
      * 
      * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
-     * TimeLine.
+     * Timeline.
      * 
      * **Warning:** In `ABSOLUTE` mode, throws if the resulting timestamp would be negative
-     *  or violate the chronological ordering of the TimeLine.
+     *  or violate the chronological ordering of the Timeline.
      * 
      * @param {number} index The index of the {@link KeyFrame} to insert before.
      * @param {*} state The state to store in the created {@link KeyFrame}.
      * @param {number} duration The duration of the inserted {@link KeyFrame}, in **ms**. Must be a positive, finite value.
-     * @returns {TimeLine} This TimeLine, allowing method chaining.
+     * @returns {Timeline} This Timeline, allowing method chaining.
      */
     before(index, state, duration){
         this.#assertBuilderFunc();
@@ -704,7 +706,7 @@ class TimeLine extends Playable{
             throw new Error("Duration must be a positive finite value.");
         const nextkf = this.#retrieveKf(index);
 
-        if (this.#mode === TimeLine.Mode.ABSOLUTE){
+        if (this.#mode === Timeline.Mode.ABSOLUTE){
             const prevKfTimestamp = nextkf.time - (duration + this.#wait);
             if (prevKfTimestamp < 0)
                 throw new Error("KeyFrames timestamp becomes negative");
@@ -729,13 +731,13 @@ class TimeLine extends Playable{
         return this;
     }
     /**
-     * Compiles the TimeLine, optimizing and preparing it to be {@link play() played}.
+     * Compiles the Timeline, optimizing and preparing it to be {@link play() played}.
      * - In `RELATIVE` mode, converts all relative timings into their absolute equivalents.
      * - Optimizes duplicate {@link KeyFrame KeyFrames} whenever a `sameState` comparison
      * function has been provided.
-     * - Locks the TimeLine after compilation. Call {@link unlock()} before making any
+     * - Locks the Timeline after compilation. Call {@link unlock()} before making any
      * further modifications.
-     * - Calling this method on an already compiled TimeLine has no effect.
+     * - Calling this method on an already compiled Timeline has no effect.
      *
      * **Warning:** If no `sameState` comparison function was provided, duplicate
      * {@link KeyFrame KeyFrames} cannot be eliminated and a warning will be emitted.
@@ -744,10 +746,10 @@ class TimeLine extends Playable{
         if (this.#compiled) return;
         if (this.#sameState === undefined)
             console.warn("Cannot resolve duplicate KeyFrame transitions due to missing equating function.\nPlease consider providing one for eliminating redudancy.");
-        if (this.#mode === TimeLine.Mode.ABSOLUTE){
+        if (this.#mode === Timeline.Mode.ABSOLUTE){
             this.#compileAbsolute();
         }
-        else if (this.#mode === TimeLine.Mode.RELATIVE){
+        else if (this.#mode === Timeline.Mode.RELATIVE){
             this.#transformRelative();
             this.#compileAbsolute();
         }
@@ -757,14 +759,14 @@ class TimeLine extends Playable{
         this.#locked = true;
     }
     /**
-     * Unlocks the TimeLine, allowing it to be modified again.
-     * - Optionally converts the TimeLine to the specified mode while unlocking.
-     * - Calling this method on an already unlocked TimeLine has no effect.
+     * Unlocks the Timeline, allowing it to be modified again.
+     * - Optionally converts the Timeline to the specified mode while unlocking.
+     * - Calling this method on an already unlocked Timeline has no effect.
      *
-     * @param {typeof TimeLine.Mode} [mode] The mode to convert the TimeLine to before
+     * @param {typeof Timeline.Mode} [mode] The mode to convert the Timeline to before
      * unlocking. If omitted, the current mode is preserved.
      *
-     * @throws {Error} If `mode` is provided but is not a valid {@link TimeLine.Mode}.
+     * @throws {Error} If `mode` is provided but is not a valid {@link Timeline.Mode}.
      */ 
     unlock(mode = undefined){
         if(!this.#locked) return;
@@ -772,34 +774,36 @@ class TimeLine extends Playable{
             this.#locked = false;
             return;
         }
-        if(!(mode === TimeLine.Mode.ABSOLUTE || mode === TimeLine.Mode.RELATIVE))
-            throw new Error("Input mode must be one of TimeLines Modes.");
+        if(!(mode === Timeline.Mode.ABSOLUTE || mode === Timeline.Mode.RELATIVE))
+            throw new Error("Input mode must be one of Timelines Modes.");
         if (mode !== this.#mode){
-            if(mode === TimeLine.Mode.ABSOLUTE)
-                this.#transformAbsolute();
-            else 
+            if(this.#mode === Timeline.Mode.ABSOLUTE)
                 this.#transformRelative();
+            else 
+                this.#transformAbsolute();
+                
+                
         }
         this.#locked = false;
     }
     /**
-     * Returns a copy of the TimeLine's {@link KeyFrame KeyFrames}.
+     * Returns a copy of the Timeline's {@link KeyFrame KeyFrames}.
      * - The returned {@link KeyFrame KeyFrames} are deep copies and may be modified
-     * independently of the TimeLine.
+     * independently of the Timeline.
      * - Optionally converts the returned KeyFrames to the specified mode without
-     * modifying the TimeLine itself.
+     * modifying the Timeline itself.
      *
-     * @param {typeof TimeLine.Mode} [mode=this.mode] The mode in which to return the
-     * {@link KeyFrame KeyFrames}. If omitted, the TimeLine's current mode is used.
-     * @returns {KeyFrame[]} A copy of the TimeLine's {@link KeyFrame KeyFrames}.
+     * @param {typeof Timeline.Mode} [mode=this.mode] The mode in which to return the
+     * {@link KeyFrame KeyFrames}. If omitted, the Timeline's current mode is used.
+     * @returns {KeyFrame[]} A copy of the Timeline's {@link KeyFrame KeyFrames}.
      *
-     * @throws {Error} If `mode` is not a valid {@link TimeLine.Mode}.
+     * @throws {Error} If `mode` is not a valid {@link Timeline.Mode}.
     */
     inspectKeyFrames(mode = this.#mode){
-        if(!(mode === TimeLine.Mode.ABSOLUTE || mode === TimeLine.Mode.RELATIVE))
+        if(!(mode === Timeline.Mode.ABSOLUTE || mode === Timeline.Mode.RELATIVE))
             throw new Error("Please give a timeline mode to inspect");
         if(mode !== this.#mode){
-            return (mode === TimeLine.Mode.ABSOLUTE) ?
+            return (mode === Timeline.Mode.RELATIVE) ?
                 this.#transformAbsolute(true) :
                 this.#transformRelative(true, true);
         }
@@ -824,12 +828,12 @@ class TimeLine extends Playable{
      * Returns the KeyFrame corresponding to the provided timestamp.
      *
      * @param {number} time The time to retrieve the KeyFrame at, in **ms**. Must be in the range
-     * `[0, TimeLine duration]`.
+     * `[0, Timeline duration]`.
      * @returns {KeyFrame|undefined} A KeyFrame representing the state at the specified `time`.
     */
     keyframeAt(time){
         if (!this.#compiled){
-            console.warn("Please compile TimeLine before trying to retrieve specific keyframes.");
+            console.warn("Please compile Timeline before trying to retrieve specific keyframes.");
             return undefined;
         }
         const endTime = this.#keyframes.at(-1).time;
@@ -852,34 +856,59 @@ class TimeLine extends Playable{
             return new KeyFrame({state: newState, absTime: time, transition: transition});
         }
     }
+    /**
+     * Clears the stored {@link KeyFrame KeyFrames} in the Timeline and resets all relevant variables.
+     * 
+     * @param {boolean} [override = false] Override the throw and forcefully clear the timeline, pauses the
+     * TimeLine.
+     *
+     * **Note:** This is a **builder** function, and will throw if used on a {@link compile compiled and locked}
+     * Timeline.
+     */
+    clearTimeline(override = false, mode = undefined){
+        if (!override)
+            this.#assertBuilderFunc();
+        else
+            this._playableState = Playable.state.PAUSED;
+        this.#keyframes.length = 0;
+        if (mode === Timeline.Mode.ABSOLUTE || mode === Timeline.Mode.RELATIVE)
+            this.#mode = mode;
+        this.#prevKf = undefined;
+        this.#currKf = undefined;
+        this.#elapsedTime = 0;
+        this.#wait = 0;
+        this.#compiled = false;
+        this.#locked = false;
+    }
+    
     //Playable Functions
     /**
-     * Pauses the TimeLine.
+     * Pauses the Timeline.
      * 
-     * **Warning:** If the TimeLine has finished, this method has no effect and logs a warning.
+     * **Warning:** If the Timeline has finished, this method has no effect and logs a warning.
      */
     pause(){
         if (this._playableState !== Playable.state.FINISHED)
             this._playableState = Playable.state.PAUSED;
-        else console.warn("TimeLine has finished.");
+        else console.warn("Timeline has finished.");
     }
     /**
-     * Resumes the TimeLine.
+     * Resumes the Timeline.
      * 
-     * **Warning:** If the TimeLine has finished, this method has no effect and logs a warning.
+     * **Warning:** If the Timeline has finished, this method has no effect and logs a warning.
      */
     resume(){
         if (this._playableState !== Playable.state.FINISHED)
             this._playableState = Playable.state.PLAYING;
-        else console.warn("TimeLine has finished.");
+        else console.warn("Timeline has finished.");
     }
    /**
-     * Plays the TimeLine in reverse.
+     * Plays the Timeline in reverse.
      * 
-     * **Note:** If the TimeLine is already reversed, this method has no effect.
+     * **Note:** If the Timeline is already reversed, this method has no effect.
      * 
-     * @see {@link TimeLine.reversed} to check whether the TimeLine is currently reversed or not.
-     * @param {boolean} [pause=true] Whether to pause the TimeLine after changing direction. If `false` resumes immediately.
+     * @see {@link Timeline.reversed} to check whether the Timeline is currently reversed or not.
+     * @param {boolean} [pause=true] Whether to pause the Timeline after changing direction. If `false` resumes immediately.
      */
     reverse(pause = true){
         if (this.#reversed) return;
@@ -887,12 +916,12 @@ class TimeLine extends Playable{
         this.#reversed = true;
     }
     /**
-     * Plays the TimeLine forward.
+     * Plays the Timeline forward.
      * 
-     * **Note:** if the TimeLine is not reversed, this method has no effect.
+     * **Note:** if the Timeline is not reversed, this method has no effect.
      * 
-     * @see {@link TimeLine.reversed} to check whether the TimeLine is currently reversed or not.
-     * @param {boolean} pause Whether to pause TimeLine after changing direction. If `false` resumes immediately.
+     * @see {@link Timeline.reversed} to check whether the Timeline is currently reversed or not.
+     * @param {boolean} pause Whether to pause Timeline after changing direction. If `false` resumes immediately.
      */
     forward(pause = true){
         if (!this.#reversed) return;
@@ -900,24 +929,24 @@ class TimeLine extends Playable{
         this.#reversed = false;
     }
     /**
-     * Resets the TimeLine to an initial state.
-     * - If the TimeLine is playing forward, initial state is the first {@link KeyFrame}.
-     * - If the TimeLine is reversed, initial state is the last {@link KeyFrame}.
+     * Resets the Timeline to an initial state.
+     * - If the Timeline is playing forward, initial state is the first {@link KeyFrame}.
+     * - If the Timeline is reversed, initial state is the last {@link KeyFrame}.
      * 
      * **Note:** This invalidates the cached current keyframe.
      * 
-     * @see {@link TimeLine.reversed} to determing whether the TimeLine is currently reversed.
-     * @param {boolean} pause Whether to pause TimeLine after resetting. If `false`, resumes immediately.
+     * @see {@link Timeline.reversed} to determing whether the Timeline is currently reversed.
+     * @param {boolean} pause Whether to pause Timeline after resetting. If `false`, resumes immediately.
      */
     reset(pause = false){
-        this.#elapsedTime = this.#reversed ? this.#keyframes.at(-1).time : this.#keyframes[0].time;
+        this.#elapsedTime = this.#reversed ? this.duration : 0;
         this._playableState = pause ? Playable.state.PAUSED : Playable.state.PLAYING;
         this.#currKf= undefined;
     }
     /**
-     * Manually sets the TimeLines elapsed time to provided time
+     * Manually sets the Timelines elapsed time to provided time
      * 
-     * **Note:** clamps `elapsed` to TimeLine bounds `[0, TimeLine duration]` and invalidates cached
+     * **Note:** clamps `elapsed` to Timeline bounds `[0, Timeline duration]` and invalidates cached
      * current KeyFrame.
      * 
      * @param {number} elapsed The new elapsed time, in **ms**.
@@ -925,35 +954,35 @@ class TimeLine extends Playable{
     seek(elapsed){
         elapsed = Math.max(Math.min(elapsed, this.#keyframes.at(-1).time), 0)
         this.#elapsedTime = elapsed;
-        this.#currkf = undefined;
+        this.#currKf = undefined;
     }
     /**
-     * Advances the TimeLine by the specified time. Does nothing if TimeLine is paused/finished.
-     * - If the TimeLine is playing **forward**, the elapsed time is increased by `deltaT`.
-     * - If the TimeLine is **reversed**, the elapsed time is decreased by `deltaT`.
+     * Advances the Timeline by the specified time. Does nothing if Timeline is paused/finished.
+     * - If the Timeline is playing **forward**, the elapsed time is increased by `deltaT`.
+     * - If the Timeline is **reversed**, the elapsed time is decreased by `deltaT`.
      * - Updates state by invoking the `onUpdate(newKeyFrame)` function, if provided.
      * - Invokes `onTransition(prevKeyFrame, nextKeyFrame)` when switching {@link KeyFrame keyframes}, if provided.
      * - Invokes `onFinish(endKeyFrame)` function upon completion (if provided), and sets playable state to `FINISHED`.
      * 
-     * **Note:** All values are clamped to TimeLine bounds.
+     * **Note:** All values are clamped to Timeline bounds.
      * 
-     * **Warning:** Expects TimeLine to be compiled, will throw if not.
+     * **Warning:** Expects Timeline to be compiled, will compile the timeline if its not yet compiled.
      * 
      * @see {@link compile()} to get more information on compilation details.
-     * @see {@link reverse()} to determine whether the TimeLine is currently reversed.
+     * @see {@link reverse()} to determine whether the Timeline is currently reversed.
      * @param {number} deltaT Time passed since the last call to `play()` in **ms**.
      */
     play(dt){
         if (!this.#compiled)
-            throw new Error("TimeLine can only be played after being compiled.");
-        if (this.#keyframes.length === 1) return;
+            this.compile();
+        if (this.#keyframes.length <= 1) return;
         if (this._playableState === Playable.state.FINISHED || this._playableState === Playable.state.PAUSED) return;
 
         this.#elapsedTime += this.#reversed ? -dt : dt;
         const endTime = this.#keyframes.at(-1).time;
         if (this.#elapsedTime <= 0){
             this.#elapsedTime = 0;
-            this.#currKf = this.#keyframes.at[0];
+            this.#currKf = this.#keyframes.at(0);
             this.#onUpdate?.(this.#currKf.state);
             if (this.#reversed){ //reversed has completed.
                 this.#onFinish?.(this.#currKf.state);
@@ -963,9 +992,9 @@ class TimeLine extends Playable{
         }
         if (this.#elapsedTime >= endTime){
             this.#elapsedTime = endTime;
-            this.#curKf = this.#keyframes.at(-1);
+            this.#currKf = this.#keyframes.at(-1);
             this.#onUpdate?.(this.#currKf.state);
-            this.#onFrameChange?.(this.#prevKf, this.#currKf);
+            this.#onFrameChange?.(this.#prevKf?.state, this.#currKf?.state);
             if(!this.#reversed){ //forward has finished.
                 this.#onFinish?.(this.#currKf.state);
                 this._playableState = Playable.state.FINISHED;
@@ -981,8 +1010,10 @@ class TimeLine extends Playable{
             this.#animation.keyFrames = {startFrame : lower, endFrame : upper};
             this.#prevKf = this.#currKf;
             this.#currKf = lower;
-            this.#onFrameChange?.(this.#prevKf, this.#currKf);
+            this.#onFrameChange?.(this.#prevKf?.state, this.#currKf?.state);
             this.#animation.play(dt);
         }
     }
 }
+
+module.exports = Timeline;

@@ -97,22 +97,22 @@ class Grapher{
 		const angleDuration = 1000;
 		const interpType = Interpolator.func.EASE_OUT_EXPO;
 		this.ngtvXAxis.arrowHead.transform({
-			name : "finAngle",
+			name : "finInc",
 			duration : angleDuration,
 			interpType : interpType
 		});
 		this.pstvXAxis.arrowHead.transform({
-			name : "finAngle",
+			name : "finInc",
 			duration : angleDuration,
 			interpType : interpType
 		});
 		this.pstvYAxis.arrowHead.transform({
-			name : "finAngle",
+			name : "finInc",
 			duration : angleDuration,
 			interpType : interpType
 		});
 		this.ngtvYAxis.arrowHead.transform({
-			name : "finAngle",
+			name : "finInc",
 			duration : angleDuration,
 			interpType : interpType
 		});
