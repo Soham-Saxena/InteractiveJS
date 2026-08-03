@@ -41,7 +41,7 @@ class KeyFrame{
             }
         }
         else {
-            if (!copy instanceof KeyFrame)
+            if (!(copy instanceof KeyFrame))
                 throw new TypeError("copy must be a KeyFrame.");
             this.#state = copy.state;
             this.#absTime = copy.time;

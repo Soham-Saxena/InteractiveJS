@@ -1,4 +1,3 @@
-const { time } = require("node:console");
 const {Interpolator, Transition, PlayableManager, Playable, Timeline} = require("../Animation Framework/index.js");
 /**
  * @typedef {Object} point2D
@@ -177,6 +176,7 @@ class ArrowHead{
 				this.#FinalStates.finInc = nextAngle;
 			},
 			onUpdate: (newAngle) => {
+				console.log("Update.");
 				this.alpha = newAngle;
 				this.#updatePoints();
 			},
@@ -193,6 +193,7 @@ class ArrowHead{
 			})
 		}))
 	}
+
 	//private functions
 	#updatePoints(){
 		this.lowerAngle = this.theta + this.alpha - Math.PI;
@@ -413,10 +414,25 @@ class ArrowHead{
 			}
 		}
 	}
-	attrAnimation(attributeName){ //can be used for testing, bypasses setters
-		return this.#playableManager.playable(attributeName);
+	/**
+	 * 
+	 * @param {string} attributeName 
+	 * @returns {Timeline}
+	 */
+	attrTimeline({name, mode = Timeline.Mode.RELATIVE, clear = false} = {}){ //can be used for testing, bypasses setters
+		/**@type Timeline*/
+		const timeline = this.#playableManager.playable(name);
+
+		if (clear) timeline.clearTimeline(true, mode);
+		else {
+			if (timeline._playableState !== Playable.state.PLAYING){
+				if (timeline.locked)
+					timeline.unlock(mode);
+			}
+		}
+		return timeline;
 	}
-	attrAnimations(attributeNames){ //can be used for testing, bypasses setters
+	attrTimelines(attributeNames){ //can be used for testing, bypasses setters
 		const animations = [];
 		for (const name of attributeNames){
 			const retrievedAnimation = this.attrAnimation(name);
@@ -424,6 +440,18 @@ class ArrowHead{
 		}
 
 		return animations;
+	}
+	
+	startTimeline(){
+		for (const attribute of this.#playableManager.names){
+			const timeline = this.#playableManager.playable(attribute);
+			if (timeline.duration !== 0){
+				this.#timelinesPlaying[attribute] = true; 
+				if (timeline.playableState === Playable.state.PAUSED) timeline.resume();
+            	else if (timeline.playableState === Playable.state.FINISHED) timeline.reset();
+			}
+		}
+		this.#playableManager.run();
 	}
 }
 

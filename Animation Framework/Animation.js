@@ -320,7 +320,7 @@ class Animation extends Playable{
                 this.#onFinish?.(this.end);
                 this.#elapsed = this.#reversed ? 0 : this.#transition.duration + delay;
             }
-            this.#updateState?.(this.currentState);
+            else this.#updateState?.(this.currentState);
         }
     }
     /**

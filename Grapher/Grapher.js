@@ -161,7 +161,6 @@ class Grapher{
 			const dLabelOffset = {};
 			
 			const coordinatePoint = this.#sTOc({point2d : svgPoint});
-			console.log(coordinatePoint);
 			let xAxisActive = Math.abs(coordinatePoint.y) < this._axisTolerance;
 			let yAxisActive = Math.abs(coordinatePoint.x) < this._axisTolerance;
 			const activeTest = (point, labelOffset, horizontal=true) => {

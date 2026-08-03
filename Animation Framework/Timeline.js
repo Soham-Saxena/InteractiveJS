@@ -218,7 +218,7 @@ class Timeline extends Playable{
 
         result.reverse();
         this.#keyframes = result;
-        if (this.#keyframes.length = 0)
+        if (this.#keyframes === undefined)
             return;
         if (this.#keyframes[0].time !== 0){
             this.#keyframes[0].transition.delay += (this.#keyframes[0].time);
@@ -982,10 +982,11 @@ class Timeline extends Playable{
         const endTime = this.#keyframes.at(-1).time;
         if (this.#elapsedTime <= 0){
             this.#elapsedTime = 0;
-            this.#currKf = this.#keyframes.at(0);
-            this.#onUpdate?.(this.#currKf.state);
-            if (this.#reversed){ //reversed has completed.
-                this.#onFinish?.(this.#currKf.state);
+            const first = this.#keyframes.at(0);
+            this.#onUpdate?.(first.state);
+            if (this.#reversed){
+                this.#currKf = first;
+                this.#onFinish?.(first.state);
                 this._playableState = Playable.state.FINISHED;
             }
             return;
@@ -1010,6 +1011,7 @@ class Timeline extends Playable{
             this.#animation.keyFrames = {startFrame : lower, endFrame : upper};
             this.#prevKf = this.#currKf;
             this.#currKf = lower;
+            console.log(this.#prevKf?.state, this.#currKf?.state);
             this.#onFrameChange?.(this.#prevKf?.state, this.#currKf?.state);
             this.#animation.play(dt);
         }

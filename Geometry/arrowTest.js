@@ -1,6 +1,6 @@
 const basePath = app.vault.adapter.getBasePath();
 const nodePath = require("path");
-
+/**@typedef {import("./ArrowHead.js") ArrowHead} */
 function freshRequire(file) {
     delete require.cache[require.resolve(file)];
     return require(file);
@@ -27,44 +27,28 @@ svg.setAttribute("width", 500);
 svg.setAttribute("viewBox", "0 0 500 500");
 
 const path = document.createElementNS(svgNS, "path");
+/**@type ArrowHead*/
 const arrow = new ArrowHead({
     arrowOrigin : {x : 250, y : 250},
     headDirection : 0,
 });
-// arrow.transform({
-//     name : "size",
-//     duration : 2000,
-//     interpType : Interpolator.func.SMOOTHSTEP
-// });
-arrow.transform({
-    name : "direction",
-    duration : 1000,
-});
-arrow.transform({
-    name : "finAngle",
-    duration : 1000
-});
-arrow.transform({
-    name : "origin",
-    duration : 5000,
-    interpType : Interpolator.func.EASE_IN
-});
-arrow.transform({
-    name : "size",
-    duration : 1000
-});
-console.log(arrow.attrAnimation("origin").transition.configuration);
-//arrow.arrowSize = 50;
-//arrow.direction = {angle : 360};
-arrow.finInclination = {angle : Math.PI / 4, radian : true};
-arrow.origin = { x : 210, y : 309};
 
-const update = (timestamp) => {
+
+arrow.attrTimeline({name : "origin"}).
+    transform({interpType: Interpolator.func.EASE_IN}).
+    from({x: 0, y: 0}).
+    to({x: 500, y: 500}, 1000).
+    to({x: 300, y: 10}, 1000).
+    to({x: 20, y: 20}, 1000);
+
+arrow.startTimeline();
+console.log(arrow.attrTimeline({name: "origin"}).inspectKeyFrames("absolute"));
+
+updateLoop = (timestamp) => {
     path.setAttribute("d", arrow.pathScript);
-
-    requestAnimationFrame(update);
+    requestAnimationFrame(updateLoop);
 }
-requestAnimationFrame(update);
+requestAnimationFrame(updateLoop);
 
 path.setAttribute("stroke", "var(--interactive-accent)");
 path.setAttribute("stroke-width", 2.5);
